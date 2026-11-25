@@ -98,10 +98,13 @@ def main():
     def reldiff(fc, fp):
         return abs(fc.sum() - fp.sum()) / fp.sum()
 
-    d_iso = reldiff(cli_flux(None), ref.ravel(order="F"))
-    d_ani = reldiff(cli_flux(np.tile(packed(M), (NE, 1))), f6.ravel(order="F"))
-    allok &= check("3. pmmc vs CLI (aniso) within the vanilla pmmc-CLI spread", d_ani < max(3 * d_iso, 0.01),
-                   "(total flux: aniso %.2e, iso %.2e)" % (d_ani, d_iso))
+    if not (os.path.isfile(MMC) or os.path.isfile(MMC + ".exe")):
+        print("%-62s SKIP (mmc command-line binary not built)" % "3. pmmc vs CLI (aniso)")
+    else:
+        d_iso = reldiff(cli_flux(None), ref.ravel(order="F"))
+        d_ani = reldiff(cli_flux(np.tile(packed(M), (NE, 1))), f6.ravel(order="F"))
+        allok &= check("3. pmmc vs CLI (aniso) within the vanilla pmmc-CLI spread", d_ani < max(3 * d_iso, 0.01),
+                       "(total flux: aniso %.2e, iso %.2e)" % (d_ani, d_iso))
 
     # 4. errors
     for name, val, extra in [
