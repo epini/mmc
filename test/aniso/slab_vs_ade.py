@@ -122,6 +122,7 @@ def main():
     p = cols["p"]
     t = cols["ppath"][:, 0] * a.n / C_MM_NS            # ns
     w = cols["w"][:, 0] if "w" in cols else np.ones(len(t))
+    w = w * np.exp(-a.mua * cols["ppath"][:, 0])   # .mch stores the launch weight
     tr = np.abs(p[:, 2] - a.L) < 1e-3                   # transmitted
     x, y, t, w = p[tr, 0] - a.W / 2, p[tr, 1] - a.W / 2, t[tr], w[tr]
     N = hdr["total"]
