@@ -302,6 +302,7 @@ void mcx_initcfg(mcconfig* cfg) {
     cfg->isnodalmusp = 0;
     cfg->elemmus = NULL;
     cfg->isanisomus = 0;
+    cfg->elemmuslen = 0;
     memset(cfg->elemmusfile, 0, MAX_PATH_LENGTH);
     cfg->detdir = NULL;
     cfg->sdmap = NULL;

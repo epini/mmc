@@ -1,5 +1,29 @@
 # Test anisotropic MMC (branch `aniso`)
 
+## Using anisotropic scattering from Python (pmmc)
+
+Build pmmc from this branch (needs a C/C++ compiler and CMake; on Windows the Visual Studio Build Tools):
+```
+git submodule update --init src/pybind11
+cd pmmc && pip install .
+```
+
+Then add `cfg["elemmus"]` to an ordinary pmmc configuration, one tensor per tetrahedron, in 1/mm:
+```python
+import numpy as np, pmmc
+cfg = {...}                          # node, elem, elemprop, prop, srcpos, srcdir, tstart/tend/tstep, ...
+cfg["elemmus"] = T                   # (ne, 6) as [Mxx, Myy, Mzz, Mxy, Mxz, Myz]  or  (ne, 3, 3)
+cfg["compute"] = "sse"               # CPU only for now (or cfg["gpuid"] = -1)
+res = pmmc.mmclab(cfg)
+```
+- mus(s) = sᵀ M s along the direction s; the `mus` column of `prop` is ignored, `mua`, `g`, `n` still come from `prop`.
+- Every element needs a tensor: isotropic tissues get mus·I, i.e. `[mus, mus, mus, 0, 0, 0]`.
+- A (ne,3,3) input is symmetrized, (M + Mᵀ)/2: the antisymmetric part does not contribute to sᵀ M s.
+- Wrong shape, wrong number of rows, a tensor that is not positive semi-definite, or a GPU backend: explicit error.
+
+`test_pmmc.py` (run with `OMP_NUM_THREADS=1`) checks: bitwise isotropic regression, (ne,6) = (ne,3,3) and
+non-symmetric = symmetric part (bitwise), agreement with the command line, and the error cases.
+
 All on CPU (`-G -1`), binary built from this branch.
 
 ## Test 1 — isotropic regression

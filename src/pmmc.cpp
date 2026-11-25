@@ -895,6 +895,55 @@ void parse_config(const py::dict& user_cfg, mcconfig& mcx_config, tetmesh& mesh)
         pyecho() << "nodemusp: [" << nn << "]" << std::endl;
     }
 
+    /* anisotropic scattering: cfg.elemmus is the per-element scattering tensor (1/mm), mus(s)=s^T M s,
+     * given either packed as an (ne,6) array {Mxx,Myy,Mzz,Mxy,Mxz,Myz} or as full (ne,3,3) tensors
+     * (only the symmetric part contributes to s^T M s, so M is replaced by (M+M^T)/2). Its size is
+     * checked against the mesh, and each tensor for positive semi-definiteness, in mesh_loadelemmus. */
+    if (user_cfg.contains("elemmus")) {
+        auto arr = py::array_t < float, py::array::c_style | py::array::forcecast >::ensure(user_cfg["elemmus"]);
+
+        if (!arr) {
+            throw py::value_error("Invalid elemmus field value");
+        }
+
+        auto buffer_info = arr.request();
+        const float* src = (const float*)buffer_info.ptr;
+        size_t ne;
+
+        if (buffer_info.ndim == 2 && buffer_info.shape[1] == 6) {
+            ne = (size_t)buffer_info.shape[0];
+        } else if (buffer_info.ndim == 3 && buffer_info.shape[1] == 3 && buffer_info.shape[2] == 3) {
+            ne = (size_t)buffer_info.shape[0];
+        } else {
+            throw py::value_error("cfg['elemmus'] must have shape (ne,6) as [Mxx,Myy,Mzz,Mxy,Mxz,Myz] or (ne,3,3)");
+        }
+
+        if (mcx_config.elemmus) {
+            free(mcx_config.elemmus);
+        }
+
+        mcx_config.elemmus = (float*) malloc(ne * 6 * sizeof(float));
+
+        if (buffer_info.ndim == 2) {
+            memcpy(mcx_config.elemmus, src, ne * 6 * sizeof(float));
+        } else {
+            for (size_t i = 0; i < ne; i++) {
+                const float* M = src + i * 9;   /* row-major 3x3 */
+                float* P = mcx_config.elemmus + i * 6;
+                P[0] = M[0];
+                P[1] = M[4];
+                P[2] = M[8];
+                P[3] = 0.5f * (M[1] + M[3]);
+                P[4] = 0.5f * (M[2] + M[6]);
+                P[5] = 0.5f * (M[5] + M[7]);
+            }
+        }
+
+        mcx_config.isanisomus = 1;
+        mcx_config.elemmuslen = (int)ne;
+        pyecho() << "elemmus: [" << ne << ",6]" << std::endl;
+    }
+
 
     if (user_cfg.contains("compute")) {
         std::string compute_str = py::str(user_cfg["compute"]);
