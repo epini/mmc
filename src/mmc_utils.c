@@ -300,6 +300,9 @@ void mcx_initcfg(mcconfig* cfg) {
     cfg->nodemusp = NULL;
     cfg->isnodalmua = 0;
     cfg->isnodalmusp = 0;
+    cfg->elemmus = NULL;
+    cfg->isanisomus = 0;
+    memset(cfg->elemmusfile, 0, MAX_PATH_LENGTH);
     cfg->detdir = NULL;
     cfg->sdmap = NULL;
     cfg->sdmaplen = 0;
@@ -478,6 +481,11 @@ void mcx_clearcfg(mcconfig* cfg) {
     if (cfg->nodemusp) {
         free(cfg->nodemusp);
         cfg->nodemusp = NULL;
+    }
+
+    if (cfg->elemmus) {
+        free(cfg->elemmus);
+        cfg->elemmus = NULL;
     }
 
     if (cfg->flog && cfg->flog != stdout && cfg->flog != stderr) {
@@ -1759,6 +1767,18 @@ int mcx_loadjson(cJSON* root, mcconfig* cfg) {
 
         if (subitem) {
             strncpy(cfg->meshtag, FIND_JSON_STR("MeshID", "Mesh.MeshID", Mesh, (MMC_ERROR(-1, "You must specify mesh files"), "")), MAX_SESSION_LENGTH - 1);
+        }
+
+        /* anisotropic scattering: per-element tensor mus(s)=s^T M s, read in mmc_prep once ne is known */
+        subitem = FIND_JSON_OBJ("ElemMusFile", "Mesh.ElemMusFile", Mesh);
+
+        if (subitem) {
+            if (!cJSON_IsString(subitem)) {
+                MMC_ERROR(-1, "Mesh.ElemMusFile must be a file name");
+            }
+
+            strncpy(cfg->elemmusfile, subitem->valuestring, MAX_PATH_LENGTH - 1);
+            cfg->isanisomus = 1;
         }
 
         //< reading mesh node and elem mesh data from JSON file

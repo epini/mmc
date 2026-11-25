@@ -50,6 +50,36 @@
 
 #define F32N(a) ((a) & 0x80000000)          /**<  Macro to test if a floating point is negative */
 #define F32P(a) ((a) ^ 0x80000000)          /**<  Macro to test if a floating point is positive */
+
+/**
+ * @brief Scattering coefficient of the current step, with optional tensor (anisotropic) scattering
+ *
+ * With cfg->isanisomus, mus along the direction v inside element eid (0-based) is
+ * mus(v) = v^T M v, M = {Mxx,Myy,Mzz,Mxy,Mxz,Myz} from cfg->elemmus (Pini et al. 2026).
+ * The direction is constant between two events, so mus(v) is constant over a step and the
+ * dimensionless remaining path r->slen converts exactly to a physical length.
+ * Returns mus for mmMCX and mua+mus for mmMCML, as the isotropic code did.
+ */
+static inline float mmc_dir_mus(const mcconfig* cfg, const medium* prop, int eid, const float3* v) {
+    float mus = prop->mus;
+
+    if (cfg->isanisomus) {
+        const float* M = cfg->elemmus + (size_t)eid * 6;
+        float vx2 = v->x * v->x, vy2 = v->y * v->y, vz2 = v->z * v->z;
+
+        /* divide by |v|^2: the direction drifts from unit norm in single precision */
+        mus = (M[0] * vx2 + M[1] * vy2 + M[2] * vz2
+               + 2.f * (M[3] * v->x * v->y + M[4] * v->x * v->z + M[5] * v->y * v->z)) / (vx2 + vy2 + vz2);
+        mus = (mus > 0.f) ? mus : 0.f;
+    }
+
+    return mus;
+}
+
+static inline float mmc_step_mus(const mcconfig* cfg, const medium* prop, int eid, const float3* v) {
+    float mus = mmc_dir_mus(cfg, prop, eid, v);
+    return (cfg->mcmethod == mmMCX) ? mus : (prop->mua + mus);
+}
 #ifndef JUST_BELOW_ONE
     #define JUST_BELOW_ONE  0.9998f          /**<  used to clamp pattern index to avoid overflow */
 #endif
@@ -312,7 +342,7 @@ float plucker_raytet(ray* r, raytracer* tracer, mcconfig* cfg, visitor* visit) {
 
     rc = prop->n * R_C0;
     currweight = r->weight;
-    mus = (cfg->mcmethod == mmMCX) ? prop->mus : (prop->mua + prop->mus);
+    mus = mmc_step_mus(cfg, prop, eid, &(r->vec));
 
 #ifdef MMC_USE_SSE
     {
@@ -653,7 +683,7 @@ float havel_raytet(ray* r, raytracer* tracer, mcconfig* cfg, visitor* visit) {
     prop = tracer->mesh->med + (tracer->mesh->type[eid]);
     rc = prop->n * R_C0;
     currweight = r->weight;
-    mus = (cfg->mcmethod == mmMCX) ? prop->mus : (prop->mua + prop->mus);
+    mus = mmc_step_mus(cfg, prop, eid, &(r->vec));
 
     r->pout.x = MMC_UNDEFINED;
     r->faceid = -1;
@@ -920,7 +950,7 @@ float badouel_raytet(ray* r, raytracer* tracer, mcconfig* cfg, visitor* visit) {
         rc = prop->n * R_C0;
         currweight = r->weight;
 
-        mus = (cfg->mcmethod == mmMCX) ? prop->mus : (prop->mua + prop->mus);
+        mus = mmc_step_mus(cfg, prop, eid, &(r->vec));
 
         dlen = (mus <= EPS) ? R_MIN_MUS : r->slen / mus;
         Lp0 = bary.x;
@@ -1554,7 +1584,7 @@ float branchless_badouel_raytet(ray* r, raytracer* tracer, mcconfig* cfg, visito
 
         rc = prop->n * R_C0;
         currweight = r->weight;
-        mus = (cfg->mcmethod == mmMCX) ? prop->mus : (prop->mua + prop->mus);
+        mus = mmc_step_mus(cfg, prop, eid, &(r->vec));
 
         enb = (int*)(tracer->mesh->facenb + eid * tracer->mesh->elemlen);
         r->nexteid = enb[r->faceid]; // if I use nexteid-1, the speed got slower, strange!

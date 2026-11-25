@@ -925,6 +925,98 @@ void mesh_loadroi(tetmesh* mesh, mcconfig* cfg) {
  * @param[in] cfg: the simulation configuration structure
  */
 
+/**
+ * @brief Load and check the per-element scattering tensor for anisotropic scattering
+ *
+ * When cfg->isanisomus is set, the scattering coefficient along the propagation direction s
+ * inside element e is mus(s) = s^T M_e s, with M_e a symmetric 3x3 tensor stored as 6 floats
+ * {Mxx,Myy,Mzz,Mxy,Mxz,Myz} (1/mm) in cfg->elemmus. If cfg->elemmus was not supplied by the
+ * caller (mmclab/pmmc), it is read from cfg->elemmusfile: raw little-endian float32, 6*ne values,
+ * element-major. Each tensor must be positive semi-definite, so that mus(s) >= 0 for every s.
+ *
+ * @param[in] mesh: the mesh object, ne must be known
+ * @param[in] cfg: the simulation configuration
+ */
+
+void mesh_loadelemmus(tetmesh* mesh, mcconfig* cfg) {
+    size_t len, i;
+
+    if (!cfg->isanisomus) {
+        return;
+    }
+
+    if (mesh->ne <= 0) {
+        MMC_ERROR(-1, "anisotropic scattering: the mesh must be loaded before the scattering tensor");
+    }
+
+    len = (size_t)mesh->ne * 6;
+
+    if (cfg->elemmus == NULL) {
+        char fname[MAX_FULL_PATH];
+        FILE* fp;
+        long fsize;
+
+        if (cfg->elemmusfile[0] == '\0') {
+            MMC_ERROR(-1, "anisotropic scattering is enabled but neither elemmus nor ElemMusFile is given");
+        }
+
+        if (cfg->rootpath[0] && cfg->elemmusfile[0] != '/' && cfg->elemmusfile[0] != '\\' && strchr(cfg->elemmusfile, ':') == NULL) {
+            snprintf(fname, MAX_FULL_PATH, "%s%c%s", cfg->rootpath, pathsep, cfg->elemmusfile);
+        } else {
+            snprintf(fname, MAX_FULL_PATH, "%s", cfg->elemmusfile);
+        }
+
+        fp = fopen(fname, "rb");
+
+        if (fp == NULL) {
+            MMC_ERROR(-1, "can not open the scattering tensor file (Mesh.ElemMusFile)");
+        }
+
+        fseek(fp, 0, SEEK_END);
+        fsize = ftell(fp);
+        fseek(fp, 0, SEEK_SET);
+
+        if (fsize != (long)(len * sizeof(float))) {
+            fclose(fp);
+            MMC_FPRINTF(cfg->flog, S_RED "ERROR: %s has %ld bytes, expected %zu (6 float32 per element, ne=%d)\n" S_RESET,
+                        fname, fsize, len * sizeof(float), mesh->ne);
+            MMC_ERROR(-1, "the scattering tensor file does not match the mesh size");
+        }
+
+        cfg->elemmus = (float*)malloc(len * sizeof(float));
+
+        if (fread(cfg->elemmus, sizeof(float), len, fp) != len) {
+            fclose(fp);
+            MMC_ERROR(-1, "failed to read the scattering tensor file");
+        }
+
+        fclose(fp);
+    }
+
+    /* the tensor is given in 1/mm, as the media table: convert to 1/(mesh length unit) */
+    if (cfg->unitinmm != 1.f) {
+        for (i = 0; i < len; i++) {
+            cfg->elemmus[i] *= cfg->unitinmm;
+        }
+    }
+
+    /* positive semi-definite check via the leading principal minors, with a relative tolerance */
+    for (i = 0; i < (size_t)mesh->ne; i++) {
+        const float* M = cfg->elemmus + i * 6;
+        double xx = M[0], yy = M[1], zz = M[2], xy = M[3], xz = M[4], yz = M[5];
+        double scale = fabs(xx) + fabs(yy) + fabs(zz) + 1e-12;
+        double m2 = xx * yy - xy * xy;
+        double det = xx * (yy * zz - yz * yz) - xy * (xy * zz - yz * xz) + xz * (xy * yz - yy * xz);
+
+        if (xx < -1e-6 * scale || yy < -1e-6 * scale || zz < -1e-6 * scale
+                || m2 < -1e-5 * scale * scale || det < -1e-4 * scale * scale * scale) {
+            MMC_FPRINTF(cfg->flog, S_RED "ERROR: element %zu has a scattering tensor that is not positive semi-definite: [%g %g %g %g %g %g]\n" S_RESET,
+                        i + 1, xx, yy, zz, xy, xz, yz);
+            MMC_ERROR(-1, "invalid scattering tensor: mus(s) would be negative along some direction");
+        }
+    }
+}
+
 void mesh_loadelem(tetmesh* mesh, mcconfig* cfg) {
     FILE* fp;
     int tmp, len, i, j, datalen;

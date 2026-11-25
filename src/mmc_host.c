@@ -145,6 +145,24 @@ int mmc_prep(mcconfig* cfg, tetmesh* mesh, raytracer* tracer) {
 
     mcx_prep(cfg);
 
+    /* anisotropic (tensor) scattering, aniso branch: CPU tracers only for now */
+    if (cfg->isanisomus) {
+        if (cfg->compute != cbSSE && cfg->gpuid <= MAX_DEVICE) {
+            MMC_ERROR(-4, "anisotropic scattering (Mesh.ElemMusFile/cfg.elemmus) is only implemented on the CPU: use -G -1 or -c sse");
+        }
+
+        if (cfg->implicit) {
+            MMC_ERROR(-4, "anisotropic scattering can not be combined with implicit MMC (iMMC) yet");
+        }
+
+        if (cfg->mcmethod != mmMCX) {
+            /* MCML mode: albedoweight() runs after the new direction is drawn, the albedo would need the incoming one */
+            MMC_ERROR(-4, "anisotropic scattering requires the default MC method (-m 0): the MCML mode (-m 1) is not supported");
+        }
+
+        mesh_loadelemmus(mesh, cfg);
+    }
+
     /* mcx_prep appends the detectors as adjoint sources in the mmc binary, after mesh_loadelem
        sized the output buffer for the sources alone; resize it for every source/detector slot */
     if (mesh->weight && cfg->extrasrclen > cfg->srcnum) {

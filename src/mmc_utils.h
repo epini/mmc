@@ -327,6 +327,12 @@ typedef struct MMC_config {
     char isnodalmua;              /**<1: enable per-node mua via cfg.nodemua (CW or RF DOT recon).*/
     char isnodalmusp;             /**<1: also enable per-node musp via cfg.nodemusp (RF DOT recon).
                                        Requires isnodalmua=1.*/
+    float* elemmus;               /**<optional per-element scattering tensor, length 6*mesh.ne, packed as
+                                       {Mxx,Myy,Mzz,Mxy,Mxz,Myz} in 1/mm; when isanisomus=1 the scattering
+                                       coefficient along the direction s is mus(s)=s^T M s (Pini et al.,
+                                       Adv. Theory Simul. 2026); mua, g and n stay per-tissue (gmed[type])*/
+    char isanisomus;              /**<1: enable direction-dependent scattering via cfg.elemmus*/
+    char elemmusfile[MAX_PATH_LENGTH]; /**<binary float32 file holding elemmus (6*ne values, row-major)*/
     double* energytot;             /**<total energy launched for each source, a buffer of length srcnum */
     double* energyesc;             /**<total energy escaped for each source, a buffer of length srcnum */
     unsigned int detectedcount;    /**<total number of detected photons*/
