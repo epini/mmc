@@ -52,8 +52,10 @@ Examples
 
 import sys
 
-try:
-    if sys.platform.startswith("win"):
+if sys.platform.startswith("win"):
+    # the MinGW-built PyPI wheels need libgomp, shipped with sparse_numba; a module built locally
+    # with MSVC uses vcomp140.dll instead, so a missing sparse_numba must not hide _pmmc
+    try:
         import os, sparse_numba, ctypes
 
         ctypes.CDLL(
@@ -65,7 +67,10 @@ try:
                 "libgomp-1.dll",
             )
         )
+    except (ImportError, OSError):
+        pass
 
+try:
     from _pmmc import gpuinfo, run, version
 except ImportError:  # pragma: no cover
     run = None
