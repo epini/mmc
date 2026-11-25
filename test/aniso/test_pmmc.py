@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""pmmc tests for cfg['elemmus'] (branch aniso). Run with OMP_NUM_THREADS=1 for bitwise checks:
+"""pmmc tests for cfg['elemmus'] (branch aniso); runs single-threaded (bitwise checks):
 
-    OMP_NUM_THREADS=1 python3 test_pmmc.py
+    python test_pmmc.py
 
 1. isotropic regression: elemmus = mus*I gives the same flux as no elemmus (bitwise)
 2. (ne,6) and (ne,3,3) inputs give the same flux (bitwise); a non-symmetric 3x3 equals its symmetric part
@@ -14,6 +14,10 @@ import os
 import subprocess
 import sys
 import tempfile
+
+# bitwise comparisons need a single OpenMP thread (with several threads the order in which photons
+# are accumulated changes from run to run); set it before pmmc loads the OpenMP runtime
+os.environ["OMP_NUM_THREADS"] = "1"
 
 import numpy as np
 import pmmc
