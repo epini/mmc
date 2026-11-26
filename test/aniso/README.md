@@ -13,16 +13,17 @@ Then add `cfg["elemmus"]` to an ordinary pmmc configuration, one tensor per tetr
 import numpy as np, pmmc
 cfg = {...}                          # node, elem, elemprop, prop, srcpos, srcdir, tstart/tend/tstep, ...
 cfg["elemmus"] = T                   # (ne, 6) as [Mxx, Myy, Mzz, Mxy, Mxz, Myz]  or  (ne, 3, 3)
-cfg["compute"] = "sse"               # CPU only for now (or cfg["gpuid"] = -1)
+cfg["compute"] = "opencl"            # GPU (cfg["gpuid"] = 1), or "cuda"; "sse" / gpuid = -1 for the CPU
 res = pmmc.mmclab(cfg)
 ```
 - mus(s) = sᵀ M s along the direction s; the `mus` column of `prop` is ignored, `mua`, `g`, `n` still come from `prop`.
 - Every element needs a tensor: isotropic tissues get mus·I, i.e. `[mus, mus, mus, 0, 0, 0]`.
 - A (ne,3,3) input is symmetrized, (M + Mᵀ)/2: the antisymmetric part does not contribute to sᵀ M s.
-- Wrong shape, wrong number of rows, a tensor that is not positive semi-definite, or a GPU backend: explicit error.
+- Wrong shape, wrong number of rows, a tensor that is not positive semi-definite, OptiX, iMMC or MCML mode: explicit error.
 
 `test_pmmc.py` (run with `OMP_NUM_THREADS=1`) checks: bitwise isotropic regression, (ne,6) = (ne,3,3) and
 non-symmetric = symmetric part (bitwise), agreement with the command line, and the error cases.
+`gpu_vs_cpu.py` compares the GPU kernel with the CPU (Test 6 below).
 
 All on CPU (`-G -1`), binary built from this branch.
 
@@ -62,8 +63,34 @@ python3 slab_vs_ade.py --mus 1 3 4 --g 0 --nphoton 1e7 --rot 30 --plot slab_g0_r
 python3 slab_vs_ade.py --mus 10 30 40 --g 0.9 --nphoton 3e6 --plot slab_g09_rot0.png
 ```
 
+## Test 6 — GPU kernel vs CPU
+
+`gpu_vs_cpu.py`: slab of `pyxopto_compare` (full tensor, eigenvalues (5, 10, 20) mm⁻¹, all off-diagonals,
+g = 0.8, n = 1.4), pmmc OpenCL on an RTX 3050 Laptop vs pmmc CPU, same photon count, independent streams.
+Detected photons on the top (R) and bottom (T) faces; z = (GPU − CPU)/σ, χ² on T(optical path) and T(x, y).
+It also checks, on the GPU, elemmus = μs·**I** against vanilla MMC (statistically: atomic float sums make
+the GPU not bitwise reproducible).
+
+```
+python gpu_vs_cpu.py --case A --nphoton 1e6     # compute="opencl", gpuid=1
+python gpu_vs_cpu.py --case B --nphoton 1e6
+```
+
+10⁷ photons per backend, case B (μa = 0.01 mm⁻¹), GPU / CPU:
+
+| | GPU | CPU | z |
+|---|---|---|---|
+| R | 0.699322 | 0.699339 | −0.05 |
+| T | 0.032163 | 0.032191 | −0.55 |
+| ⟨x⟩_T, ⟨y⟩_T (mm) | −2.280, −4.076 | −2.282, −4.083 | 0.36, 0.76 |
+| ⟨opl⟩_T (mm) | 149.448 | 149.454 | −0.07 |
+| cov_T xx, yy, xy (mm²) | 28.03, 46.84, −4.726 | 28.01, 46.89, −4.735 | 0.37, −0.47, 0.18 |
+
+At 10⁶ photons (cases A and B) all |z| < 2.5 and the χ² tests pass. GPU ≈ 45× faster than the CPU (all cores).
+Vanilla MMC (isotropic μs = 10 mm⁻¹, case B, 10⁷ photons) gives the same GPU–CPU agreement (⟨opl⟩_T z = 0.1).
+The CUDA path (`mmc_cu_host.cu`) is written but not yet compiled or tested.
+
 ## To do
 
 - Test 4: two half-spaces with orthogonal fibre directions (face crossing).
 - Test 5: 4-layer head (Fig. 5, Pini et al., Neurophotonics 2025).
-- Test 6: GPU = CPU (after the OpenCL kernel).

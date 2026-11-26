@@ -108,6 +108,7 @@ void mmc_run_cl(mcconfig* cfg, tetmesh* mesh, raytracer* tracer) {
     cl_uint  devid = 0;
     cl_mem* gnode = NULL, *gelem = NULL, *gtype = NULL, *gfacenb = NULL, *gsrcelem = NULL, *gnormal = NULL;
     cl_mem* gnodemua_cl = NULL, *gnodemusp_cl = NULL;   /* per-node mua/musp for DOT recon (NULL otherwise) */
+    cl_mem* gelemmus_cl = NULL;   /* per-element scattering tensor, 6 floats per element (NULL otherwise) */
     cl_mem* gproperty = NULL, *gparam = NULL, *gsrcpattern = NULL, *greplayweight = NULL, *greplaytime = NULL, *greplayseed = NULL; /*read-only buffers*/
     cl_mem* gweight = NULL, *gdref = NULL, *gdetphoton = NULL, *gseed = NULL, *genergy = NULL, *greporter = NULL, *gdebugdata = NULL;     /*read-write buffers*/
     cl_mem* gprogress = NULL, *gdetected = NULL, *gphotonseed = NULL; /*write-only buffers*/
@@ -245,6 +246,7 @@ void mmc_run_cl(mcconfig* cfg, tetmesh* mesh, raytracer* tracer) {
         gnormal = (cl_mem*)calloc(workdev, sizeof(cl_mem));
         gnodemua_cl  = (cl_mem*)calloc(workdev, sizeof(cl_mem));
         gnodemusp_cl = (cl_mem*)calloc(workdev, sizeof(cl_mem));
+        gelemmus_cl = (cl_mem*)calloc(workdev, sizeof(cl_mem));
         gproperty = (cl_mem*)calloc(workdev, sizeof(cl_mem));
         gparam = (cl_mem*)calloc(workdev, sizeof(cl_mem));
 
@@ -256,7 +258,7 @@ void mmc_run_cl(mcconfig* cfg, tetmesh* mesh, raytracer* tracer) {
 
         if (!mcxqueue || !gseed || !gweight || !gdref || !gdetphoton || !genergy || !gdetected ||
                 !gphotonseed || !greporter || !gdebugdata || !gnode || !gelem || !gtype || !gfacenb ||
-                !gsrcelem || !gnormal || !gnodemua_cl || !gnodemusp_cl || !gproperty || !gparam ||
+                !gsrcelem || !gnormal || !gnodemua_cl || !gnodemusp_cl || !gelemmus_cl || !gproperty || !gparam ||
                 !gprogress || !gsrcpattern || !greplayweight || !greplaytime || !greplayseed || !groioff || !groilist || !gfaceroi) {
             status = CL_OUT_OF_HOST_MEMORY;
             break;
@@ -421,6 +423,12 @@ void mmc_run_cl(mcconfig* cfg, tetmesh* mesh, raytracer* tracer) {
                 gnodemusp_cl[i] = (cl_mem)0;
             }
 
+            if (cfg->isanisomus && cfg->elemmus) {
+                OCL_TRY(((gelemmus_cl[i] = clCreateBuffer(mcxcontext, RO_MEM, sizeof(cl_float) * 6 * (mesh->ne), cfg->elemmus, &status), status)));
+            } else {
+                gelemmus_cl[i] = (cl_mem)0;
+            }
+
             OCL_TRY(((gproperty[i] = clCreateBuffer(mcxcontext, RO_MEM, MAX_PROP * sizeof(float4), propdet, &status), status)));
             OCL_TRY(((gparam[i] = clCreateBuffer(mcxcontext, RO_MEM, sizeof(MCXParam), &param, &status), status)));
 
@@ -580,6 +588,10 @@ void mmc_run_cl(mcconfig* cfg, tetmesh* mesh, raytracer* tracer) {
 
         if (cfg->isnodalmusp) {
             snprintf(opt + strlen(opt), MAX_JIT_OPT_LEN - strlen(opt), " -DMCX_NODAL_MUSP");
+        }
+
+        if (cfg->isanisomus) {
+            snprintf(opt + strlen(opt), MAX_JIT_OPT_LEN - strlen(opt), " -DMCX_ANISO_MUS");
         }
 
         if (savevoxtype) {
@@ -743,6 +755,7 @@ void mmc_run_cl(mcconfig* cfg, tetmesh* mesh, raytracer* tracer) {
             OCL_ASSERT((clSetKernelArg(mcxkernel[i], 28, sizeof(cl_mem), (groioff[i] ? (void*)(groioff + i) : NULL))));
             OCL_ASSERT((clSetKernelArg(mcxkernel[i], 29, sizeof(cl_mem), (groilist[i] ? (void*)(groilist + i) : NULL))));
             OCL_ASSERT((clSetKernelArg(mcxkernel[i], 30, sizeof(cl_mem), (gfaceroi[i] ? (void*)(gfaceroi + i) : NULL))));
+            OCL_ASSERT((clSetKernelArg(mcxkernel[i], 31, sizeof(cl_mem), (gelemmus_cl[i] ? (void*)(gelemmus_cl + i) : NULL))));
         }
 
         if (status != CL_SUCCESS) {
@@ -1767,6 +1780,10 @@ is more than what your have specified (%d), please use the -H option to specify 
             clReleaseMemObject(gnodemusp_cl[i]);
         }
 
+        if (gelemmus_cl && gelemmus_cl[i]) {
+            clReleaseMemObject(gelemmus_cl[i]);
+        }
+
         if (gproperty && gproperty[i])       {
             clReleaseMemObject(gproperty[i]);
         }
@@ -1839,6 +1856,7 @@ is more than what your have specified (%d), please use the -H option to specify 
     free(gnormal);
     free(gnodemua_cl);
     free(gnodemusp_cl);
+    free(gelemmus_cl);
     free(gproperty);
     free(gparam);
 

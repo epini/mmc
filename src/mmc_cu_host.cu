@@ -235,6 +235,7 @@ void mmc_run_simulation(mcconfig* cfg, tetmesh* mesh, raytracer* tracer, GPUInfo
     /* per-node optical property arrays for DOT reconstruction (NULL when unused) */
     float* gnodemua_cu = NULL;
     float* gnodemusp_cu = NULL;
+    float* gelemmus_cu = NULL;   /* per-element scattering tensor, 6 floats per element (NULL otherwise) */
     uint* gseed, *gdetected;
     volatile int* progress, *gprogress;
     float* gweight, *gdref, *gdetphoton, *genergy, *gsrcpattern, *gdebugdata;
@@ -511,6 +512,13 @@ void mmc_run_simulation(mcconfig* cfg, tetmesh* mesh, raytracer* tracer, GPUInfo
                                cudaMemcpyHostToDevice));
     }
 
+    /* anisotropic scattering: the kernel reads the tensor when gelemmus is not NULL */
+    if (cfg->isanisomus && cfg->elemmus) {
+        CUDA_ASSERT(cudaMalloc((void**)&gelemmus_cu, sizeof(float) * 6 * (mesh->ne)));
+        CUDA_ASSERT(cudaMemcpy(gelemmus_cu, cfg->elemmus, sizeof(float) * 6 * (mesh->ne),
+                               cudaMemcpyHostToDevice));
+    }
+
     // gparam
     CUDA_ASSERT(cudaMemcpyToSymbol(gcfg, &param, sizeof(MCXParam), 0, cudaMemcpyHostToDevice));
 
@@ -732,7 +740,7 @@ void mmc_run_simulation(mcconfig* cfg, tetmesh* mesh, raytracer* tracer, GPUInfo
             gnodemua_cu, gnodemusp_cu, \
             gdetphoton, gdetected, gseed, (int*)gprogress, genergy, greporter, \
             gsrcpattern, greplayweight, greplaytime, greplayseed, gphotonseed, gdebugdata, gvoxtype, \
-            groioff, groilist, gfaceroi)
+            groioff, groilist, gfaceroi, gelemmus_cu)
 #define MMC_DISPATCH(RF, MS, SD) \
     switch (cfg->implicit) { \
         case 1: MMC_DISPATCH_IM(RF, MS, SD, 1); break; \
@@ -1465,6 +1473,10 @@ are more than what your have specified (%d), please use the --maxjumpdebug optio
 
     if (gnodemusp_cu) {
         CUDA_ASSERT(cudaFree(gnodemusp_cu));
+    }
+
+    if (gelemmus_cu) {
+        CUDA_ASSERT(cudaFree(gelemmus_cu));
     }
 
     CUDA_ASSERT(cudaFree(gseed));

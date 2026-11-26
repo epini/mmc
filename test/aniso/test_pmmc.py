@@ -115,7 +115,7 @@ def main():
         ("4a. wrong shape (ne,5) rejected", np.ones((NE, 5), np.float32), {}),
         ("4b. wrong length (ne-1,6) rejected", np.tile(np.float32([1, 1, 1, 0, 0, 0]), (NE - 1, 1)), {}),
         ("4c. negative tensor rejected", np.tile(np.float32([1, 1, -1, 0, 0, 0]), (NE, 1)), {}),
-        ("4d. GPU requested rejected", np.tile(np.float32([1, 1, 1, 0, 0, 0]), (NE, 1)), {"gpuid": 1}),
+        ("4d. OptiX requested rejected", np.tile(np.float32([1, 1, 1, 0, 0, 0]), (NE, 1)), {"gpuid": 1, "compute": "optix"}),
     ]:
         c = base_cfg(); c["elemmus"] = val; c.update(extra)
         try:

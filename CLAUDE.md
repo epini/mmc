@@ -10,7 +10,7 @@ This file is for the fork only: drop it from any pull request to fangq/mmc.
 
 Monte Carlo of light transport in the whole human head with **tensor scattering** in white matter,
 the tensor derived from DTI tractography (FA, principal directions) mapped to an Optical Fractional
-Anisotropy (OFA). Plan: 1) tensor scattering in MMC (CPU ✓, GPU next); 2) head mesh + DTI template
+Anisotropy (OFA). Plan: 1) tensor scattering in MMC (CPU ✓, GPU OpenCL ✓); 2) head mesh + DTI template
 (MNI152 + HCP1065 proposed); 3) FA → OFA → (μs∥, μs⊥) mapping via his generalized diffusion theory;
 4) GPU production runs; 5) TD-fNIRS / whole-head / PBM studies. Software paper + application paper.
 
@@ -38,7 +38,12 @@ Source changes (small, keep them small):
 - `src/mmc_mesh.c`: `mesh_loadelemmus()` — outside the `#ifndef MCX_CONTAINER` block (pmmc/mmclab must
   link it); file reading only in the CLI; checks row count vs ne, unit scaling (unitinmm), PSD check.
 - `src/mmc_raytrace.c`: `mmc_dir_mus()` / `mmc_step_mus()`; all CPU tracers (P/H/B/S/G) use them.
-- `src/mmc_host.c` (`mmc_prep`): rejects GPU, iMMC and MCML mode (`-m 1`) when anisotropic.
+- `src/mmc_core.cl` (OpenCL + CUDA kernel): `gelemmus` (6 floats/element) is the last argument of
+  `mmc_main_loop` → `onephoton` → `branchless_badouel_raytet`; there, after the NODAL_USE_MUA/MUSP
+  block, `prop.mus` = same formula as `mmc_dir_mus`. Switch `ANISO_USE_MUS`: JIT `-DMCX_ANISO_MUS`
+  on OpenCL, `gelemmus != NULL` on CUDA (no MCXParam change).
+  Host: `src/mmc_cl_host.c` (buffer, kernel arg 31, JIT flag), `src/mmc_cu_host.cu` (buffer, launch arg).
+- `src/mmc_host.c` (`mmc_prep`): rejects OptiX, iMMC and MCML mode (`-m 1`) when anisotropic.
   MCML is excluded on purpose: `albedoweight()` runs after the new direction is drawn.
 - `src/pmmc.cpp`: `cfg["elemmus"]` as (ne,6) or (ne,3,3).
 - `pmmc/pmmc/__init__.py`: on Windows the `sparse_numba` libgomp preload is optional (upstream bug that
@@ -49,16 +54,14 @@ Validation (`test/aniso/`, see its README):
 - slab vs generalized ADE: D within 1%, T(t) 1–2%, g = 0 and 0.9, rotated tensor (`slab_vs_ade.py`);
 - full tensor (all off-diagonals) vs PyXOpto `AnisotropicLayer`: R, T, maps, optical path within noise
   (`pyxopto_compare/`);
-- `test_pmmc.py` (pmmc interface + error cases), `demo_aniso.py` (visual example).
+- `test_pmmc.py` (pmmc interface + error cases), `demo_aniso.py` (visual example);
+- GPU (OpenCL, RTX 3050) vs CPU on the PyXOpto slab, cases A/B, R, T, centroid, covariance,
+  T(opl), T(x,y) (`gpu_vs_cpu.py`): agreement within statistics; ~45× faster than CPU (all cores).
+  The CUDA host path is written but NOT compiled/tested: no CUDA toolkit (nvcc) on his PC.
 
 ## Next steps (agreed order may change: ask him)
 
-1. **GPU kernel** (`src/mmc_core.cl`, shared by OpenCL and CUDA): in `branchless_badouel_raytet`,
-   right after the NODAL_USE_MUA/MUSP block (~line 1154–1163) and before `r->Lmove = ... r->slen / prop.mus`,
-   set `prop.mus` from a new `__global float* gelemmus` (6 per element) with the same formula as
-   `mmc_dir_mus`. Host: `src/mmc_cl_host.c` (buffer, kernel arg, `-DANISO_MUS` JIT option, like
-   NODAL_USE_MUA), `src/mmc_cu_host.cu`. Then lift the GPU rejection in `mmc_host.c` and the 4d test.
-   Validate GPU vs CPU statistically (not bitwise) on the slab and PyXOpto cases. He has an NVIDIA GPU.
+1. CUDA build test (needs the CUDA toolkit, or a Linux machine); OpenCL is enough for production.
 2. Test 4: two domains with orthogonal fibres (face crossing). Test 5: 4-layer head of the 2025 paper.
 3. DTI → mesh pipeline (Python): template, Brain2Mesh/iso2mesh, tensors on element centroids in
    Log-Euclidean metric, rotation from image to mesh frame (check: corpus callosum must be left–right).
@@ -87,6 +90,10 @@ Validation (`test/aniso/`, see its README):
 
 - Bitwise comparisons only with `OMP_NUM_THREADS=1` (test_pmmc.py sets it itself).
 - pmmc and the CLI seed differently: vanilla pmmc vs CLI already differ ~0.5% → compare statistically.
+- pmmc on the GPU: `compute="opencl", gpuid=1` (device 1 = the NVIDIA; the Intel iGPU is also listed).
+- pmmc `res["detp"]` is a dict (`detid, nscat, ppath, p, v, w0, ...`), not the raw array.
+- Upstream bug (not ours, not fixed): `mmc_cl_host.c` respin>1 resets the seed buffer on kernel arg 15
+  (gdetphoton) instead of 17 (gseed).
 - `.mch` detected photons store the launch weight: apply `exp(-mua * ppath)` yourself.
 - MMC launches photons inside the medium (no specular loss); PyXOpto subtracts it and reports it.
 - pmmc `mmclab()` default output is a 1 mm voxel grid (`flux` shape (nx, ny, nz, ngates)).

@@ -145,10 +145,10 @@ int mmc_prep(mcconfig* cfg, tetmesh* mesh, raytracer* tracer) {
 
     mcx_prep(cfg);
 
-    /* anisotropic (tensor) scattering, aniso branch: CPU tracers only for now */
+    /* anisotropic (tensor) scattering, aniso branch: CPU tracers and the OpenCL/CUDA kernel */
     if (cfg->isanisomus) {
-        if (cfg->compute != cbSSE && cfg->gpuid <= MAX_DEVICE) {
-            MMC_ERROR(-4, "anisotropic scattering (Mesh.ElemMusFile/cfg.elemmus) is only implemented on the CPU: use -G -1 or -c sse");
+        if (cfg->compute == cbOptiX && cfg->gpuid <= MAX_DEVICE) {
+            MMC_ERROR(-4, "anisotropic scattering (Mesh.ElemMusFile/cfg.elemmus) is not implemented in OptiX MMC: use -c opencl, -c cuda or -c sse");
         }
 
         if (cfg->implicit) {

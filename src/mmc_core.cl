@@ -76,6 +76,7 @@
 #define MMC_TARGS    <IS_RF, IS_MULTISRC, SAVE_DETPHOTON, IMMC_MODE>
 #define NODAL_USE_MUA   (GPU_PARAM(gcfg, isnodalmua))
 #define NODAL_USE_MUSP  (GPU_PARAM(gcfg, isnodalmusp))
+#define ANISO_USE_MUS   (gelemmus != NULL)
 
 /* Cap mmc_main_loop's per-thread register footprint via launch bounds so the
  * kernel can fit MIN_BLOCKS resident blocks per SM at the default block size.
@@ -185,6 +186,14 @@ typedef struct MMC_FLOAT3 {
     #define NODAL_USE_MUSP  1
 #else
     #define NODAL_USE_MUSP  0
+#endif
+
+/* anisotropic (tensor) scattering from gelemmus (6 values per element): -DMCX_ANISO_MUS
+ * on OpenCL; on CUDA, a non-NULL gelemmus */
+#ifdef MCX_ANISO_MUS
+    #define ANISO_USE_MUS   1
+#else
+    #define ANISO_USE_MUS   0
 #endif
 
 /* OpenCL: persistent per-photon state dispatch via build-time JIT flags
@@ -1062,7 +1071,7 @@ __device__ float branchless_badouel_raytet(ray* r, __constant MCXParam* gcfg, __
         int type, __global int* facenb, __global float4* normal, __constant Medium* gmed,
         __global float* gnodemua, __global float* gnodemusp,
         __global float* replayweight, __global float* replaytime, __global int* gvoxtype,
-        __global int* roioff, __global float4* roilist, __global float* faceroi) {
+        __global int* roioff, __global float4* roilist, __global float* faceroi, __global float* gelemmus) {
 
     float Lmin;
     float ww, totalloss = 0.f;
@@ -1160,6 +1169,18 @@ __device__ float branchless_badouel_raytet(ray* r, __constant MCXParam* gcfg, __
                 prop.mus = 0.25f * (gnodemusp[eelocal[0] - 1] + gnodemusp[eelocal[1] - 1]
                                     + gnodemusp[eelocal[2] - 1] + gnodemusp[eelocal[3] - 1]);
             }
+        }
+
+        /* anisotropic scattering: mus along r->vec is v^T M v / |v|^2, M = {Mxx,Myy,Mzz,Mxy,Mxz,Myz}
+         * of the element, as mmc_dir_mus() on the CPU; r->slen is an optical depth, so the step
+         * stays exact across elements (the direction does not change between two events) */
+        if (ANISO_USE_MUS) {
+            __global float* M = gelemmus + (r->eid - 1) * 6;
+            float vx2 = r->vec.x * r->vec.x, vy2 = r->vec.y * r->vec.y, vz2 = r->vec.z * r->vec.z;
+
+            prop.mus = (M[0] * vx2 + M[1] * vy2 + M[2] * vz2
+                        + 2.f * (M[3] * r->vec.x * r->vec.y + M[4] * r->vec.x * r->vec.z + M[5] * r->vec.y * r->vec.z)) / (vx2 + vy2 + vz2);
+            prop.mus = (prop.mus > 0.f) ? prop.mus : 0.f;
         }
 
         currweight.f = r->weight;
@@ -2267,7 +2288,7 @@ __device__ void onephoton(unsigned int id, __local float* ppath, __constant MCXP
                           __global float* gnodemua, __global float* gnodemusp,
                           __global float* n_det, __global uint* detectedphoton, __local float* energytot, __local float* energyesc, __private RandType* ran, int* raytet, __global float* srcpattern,
                           __global float* replayweight, __global float* replaytime, __global RandType* photonseed, __global MCXReporter* reporter, __global float* gdebugdata,
-                          __global int* gvoxtype, __global int* roioff, __global float4* roilist, __global float* faceroi) {
+                          __global int* gvoxtype, __global int* roioff, __global float4* roilist, __global float* faceroi, __global float* gelemmus) {
 
     int oldeid, fixcount = 0;
     ray r = {gcfg->srcpos, gcfg->srcdir, {MMC_UNDEFINED, 0.f, 0.f}, GPU_PARAM(gcfg, e0), 0, 0, 1.f, 0.f, 0.f, 0.f, 0.f, ID_UNDEFINED, 0.f, 0.f};
@@ -2442,7 +2463,7 @@ __device__ void onephoton(unsigned int id, __local float* ppath, __constant MCXP
         MMC_OPAQUE(dort);
 
         if (dort) {
-            r.slen = branchless_badouel_raytet MMC_TARGS (&r, gcfg, ppath, elem, weight, type[r.eid - 1], facenb, normal, gmed, gnodemua, gnodemusp, replayweight, replaytime, gvoxtype, roioff, roilist, faceroi);
+            r.slen = branchless_badouel_raytet MMC_TARGS (&r, gcfg, ppath, elem, weight, type[r.eid - 1], facenb, normal, gmed, gnodemua, gnodemusp, replayweight, replaytime, gvoxtype, roioff, roilist, faceroi, gelemmus);
             (*raytet)++;
 
 #if defined(MCX_SAVE_DETECTORS) || defined(__NVCC__)
@@ -2632,7 +2653,7 @@ __kernel MMC_LAUNCH_BOUNDS void mmc_main_loop(const int nphoton, const int ophot
         __global float* n_det, __global uint* detectedphoton,
         __global uint* n_seed, __global int* progress, __global float* energy, __global MCXReporter* reporter, __global float* srcpattern,
         __global float* replayweight, __global float* replaytime, __global RandType* replayseed, __global RandType* photonseed, __global float* gdebugdata,
-        __global int* gvoxtype, __global int* roioff, __global float4* roilist, __global float* faceroi) {
+        __global int* gvoxtype, __global int* roioff, __global float4* roilist, __global float* faceroi, __global float* gelemmus) {
 
     RandType t[RAND_BUF_LEN];
     int idx = get_global_id(0);
@@ -2703,7 +2724,7 @@ __kernel MMC_LAUNCH_BOUNDS void mmc_main_loop(const int nphoton, const int ophot
                              gnodemua, gnodemusp,
                              n_det, detectedphoton, sharedmem + get_local_id(0) * GPU_PARAM(gcfg, srcnum),
                              sharedmem + (get_local_size(0) + get_local_id(0)) * GPU_PARAM(gcfg, srcnum), t, &raytet,
-                             srcpattern, replayweight, replaytime, photonseed, reporter, gdebugdata, gvoxtype, roioff, roilist, faceroi);
+                             srcpattern, replayweight, replaytime, photonseed, reporter, gdebugdata, gvoxtype, roioff, roilist, faceroi, gelemmus);
     }
 
     for (int i = 0; i < GPU_PARAM(gcfg, srcnum); i++) {
