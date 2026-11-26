@@ -83,6 +83,14 @@ Validation (`test/aniso/`, see its README):
    f. **Stop before the FA -> OFA -> (mus_par, mus_perp) mapping**: that is his decision (calibration
       on template FA vs his OFA 0.23, generalized ADE inversion). Only a placeholder mapping, clearly
       labelled, for a first demo run if useful.
+   g. **Done 26/11** (a–e, `test/aniso/headmodel/`). Finding: HCP1065 FA is the FA of the *mean tensor*
+      over 1065 subjects, so inter-subject orientation dispersion lowers it (CC median 0.28–0.37,
+      max 0.54 in the whole brain; individual CC is 0.6–0.8). Its orientations are fine, its FA is not.
+      **Decided 26/11: orientation from HCP1065, anisotropy magnitude from FMRIB58_FA** (FSL, mean of
+      58 FA maps, MNI152 space, same registration). Per element keep the HCP1065 eigenvectors and
+      rescale the eigenvalues so that FA = FMRIB58 FA: keep the mean diffusivity and the ratio
+      (λ2−λ3)/(λ1−λ3) (planar/linear shape of crossings), solve for the spread (clamp eigenvalues > 0). Keep both FAs in the npz.
+      First instance for the optics: OFA = FA (his choice), to be confirmed on the new numbers.
    Licences: HCP open-access terms (derived data redistributable under the same terms, acknowledge HCP),
    FSL licence (non-commercial). IIT atlas rejected: its licence forbids adapting/building upon the data.
    MIDA (single subject, DTI + 116 structures) is the later "real subject" option.
