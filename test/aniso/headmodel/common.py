@@ -33,6 +33,8 @@ MNI_BRAIN = os.path.join(STD, "MNI152_T1_1mm_brain.nii.gz")
 MNI_MASK = os.path.join(STD, "MNI152_T1_1mm_brain_mask.nii.gz")
 HCP_TENSOR = os.path.join(STD, "FSL_HCP1065_tensor_1mm.nii.gz")
 HCP_FA = os.path.join(STD, "FSL_HCP1065_FA_1mm.nii.gz")
+FMRIB58_FA = os.path.join(STD, "FMRIB58_FA_1mm.nii.gz")   # int16, FA x 10000 (mean of 58 FA maps)
+FMRIB58_SCALE = 1e-4
 JHU_LABELS = os.path.join(DATA, "fsl", "data", "atlases", "JHU", "JHU-ICBM-labels-1mm.nii.gz")
 
 TISSUE = {1: "scalp+skull", 2: "CSF", 3: "gray matter", 4: "white matter"}
@@ -71,6 +73,28 @@ def spd_fun(M, f):
     """f applied to the eigenvalues of symmetric matrices M (..., 3, 3)."""
     w, V = np.linalg.eigh(M)
     return np.einsum("...ij,...j,...kj->...ik", V, f(w), V)
+
+
+def rescale_fa(M, fa_target, lam_min_rel=1e-3):
+    """Eigenvalues of M rescaled to FA = fa_target, same eigenvectors, same mean diffusivity and
+    same (l2 - l3) / (l1 - l3): l_i = MD + s (l_i - MD), s from
+    FA^2 = 1.5 s^2 |d|^2 / (3 MD^2 + s^2 |d|^2)  ->  s |d| = MD sqrt(3 FA^2 / (1.5 - FA^2)).
+    With MD and shape fixed, FA is bounded by l3 > 0 (planar shape l1 = l2: FA < 1/sqrt(2)); there s
+    is capped so that l3 = lam_min_rel * MD: MD and shape stay exact, FA stays below the target.
+    (Nearly) isotropic M (FA < 1e-4: no direction, e.g. the free-water background outside the
+    template brain mask) stays as it is. Returns the new tensors, the scale factor s and a capped flag."""
+    w, V = np.linalg.eigh(M)
+    md = w.mean(-1, keepdims=True)
+    d = w - md
+    nd = np.sqrt((d ** 2).sum(-1))
+    nd = np.where(nd > 1e-4 * md[..., 0], nd, 0.0)
+    fa = np.clip(np.asarray(fa_target, float), 0.0, 0.99)
+    s = md[..., 0] * np.sqrt(3 * fa ** 2 / (1.5 - fa ** 2)) / np.where(nd > 0, nd, 1.0)
+    s_max = (1 - lam_min_rel) * md[..., 0] / np.maximum(-d[..., 0], 1e-30)   # d[..., 0] < 0: smallest
+    capped = (nd > 0) & (s > s_max)
+    s = np.where(nd > 0, np.minimum(s, s_max), 0.0)
+    w2 = md + s[..., None] * d
+    return np.einsum("...ij,...j,...kj->...ik", V, w2, V), s, capped
 
 
 def fa_v1(M):

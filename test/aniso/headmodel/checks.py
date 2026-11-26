@@ -3,8 +3,9 @@
 
     python checks.py               # after warp_tensors.py, conda env headenv
 
-check_fa.png         FA per tissue on the mesh elements (volume weighted), fraction of WM with FA > 0.2;
-                     FA per JHU tract: template in MNI vs Colin27 elements (registration check)
+check_fa.png         FA per tissue on the mesh elements (volume weighted; FMRIB58 magnitude, solid, and the
+                     HCP1065 mean-tensor FA, dashed), fraction of WM with FA > 0.2; FA per JHU tract:
+                     HCP1065 and FMRIB58 in MNI vs Colin27 elements (registration check)
 check_dec.png        direction-coloured FA (red L-R, green A-P, blue S-I), axial / coronal / sagittal:
                      voxel field on the Colin27 grid and the piecewise-constant value per element (MMC)
 check_cc_cst.png     corpus callosum (JHU genu/body/splenium) |v1.x| and corticospinal path (JHU CST,
@@ -21,10 +22,11 @@ import nibabel as nib
 import numpy as np
 from scipy.spatial import cKDTree
 
-from common import COLIN_MASK, HCP_FA, JHU, JHU_LABELS, MESH_ORIGIN, OUT, TISSUE, fa_v1, load_mesh, spd_fun, sym6_to_mat
+from common import (COLIN_MASK, HCP_FA, FMRIB58_FA, FMRIB58_SCALE, JHU, JHU_LABELS, MESH_ORIGIN, OUT, TISSUE,
+                    fa_v1, load_mesh, spd_fun, sym6_to_mat)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-FA_SCALE = 0.5     # DEC brightness = FA / FA_SCALE (HCP1065 template FA <= 0.54)
+FA_SCALE = 0.8     # DEC brightness = FA / FA_SCALE, clipped at 1 (FA from FMRIB58, CC ~0.7)
 SLICES = {"axial z = +20 mm": (2, 20.0), "coronal y = -20 mm": (1, -20.0), "sagittal x = 0 mm": (0, 0.0)}
 
 
@@ -32,8 +34,8 @@ def dec(fa, v1):
     return np.clip(np.abs(v1) * np.clip(fa / FA_SCALE, 0, 1)[..., None], 0, 1)
 
 
-def voxel_slice(Lc, brain, axis, w):
-    """FA and v1 on a Colin27 grid slice at world coordinate w (mm) along axis."""
+def voxel_slice(Lc, brain, axis, w, fm=None):
+    """FA and v1 on a Colin27 grid slice at world coordinate w (mm) along axis; FA from fm where > 0."""
     idx = int(round(w + MESH_ORIGIN[axis]))
     sl = [slice(None)] * 3
     sl[axis] = idx
@@ -41,6 +43,9 @@ def voxel_slice(Lc, brain, axis, w):
     fa, v1 = np.zeros(m.shape), np.zeros(m.shape + (3,))
     f, _, v = fa_v1(spd_fun(sym6_to_mat(L[m].astype(float), "fsl"), np.exp))
     fa[m], v1[m] = f, v
+    if fm is not None:
+        f2 = fm[tuple(sl)]
+        fa = np.where(f2 > 0, f2, fa)
     return fa, v1
 
 
@@ -94,39 +99,47 @@ def main():
 
     # ---- FA per tissue and per JHU tract
     fig, ax = plt.subplots(1, 2, figsize=(13, 4.8))
-    bins = np.linspace(0, 0.6, 61)
+    bins = np.linspace(0, 0.9, 91)
     cols = {2: "#1f77b4", 3: "#2ca02c", 4: "#d62728"}
     for k in (2, 3, 4):
         s = label == k
         ax[0].hist(fa[s], bins, weights=vol[s] / vol[s].sum(), histtype="step", lw=1.5, color=cols[k],
                    label="%s (%d el., median %.3f)" % (TISSUE[k], s.sum(), np.median(fa[s])))
+        ax[0].hist(e["fa_hcp"][s], bins, weights=vol[s] / vol[s].sum(), histtype="step", lw=1, ls="--",
+                   color=cols[k], label="%s, HCP1065 mean-tensor FA (median %.3f)" % (TISSUE[k], np.median(e["fa_hcp"][s])))
         say("%-12s %6d elements, %8.0f mm^3, FA median %.3f, mean (vol.) %.3f, FA > 0.2: %.1f%% (vol. %.1f%%)"
             % (TISSUE[k], s.sum(), vol[s].sum(), np.median(fa[s]), np.average(fa[s], weights=vol[s]),
                100 * np.mean(fa[s] > 0.2), 100 * vol[s][fa[s] > 0.2].sum() / vol[s].sum()))
-    ax[0].set_xlabel("FA (HCP1065 template)"); ax[0].set_ylabel("volume fraction per bin")
+        say("             HCP1065 mean-tensor FA median %.3f; outside the FMRIB58 mask (HCP1065 tensor kept): %.1f%%"
+            % (np.median(e["fa_hcp"][s]), 100 * np.mean(e["hcp_fallback"][s])))
+    ax[0].set_xlabel("FA"); ax[0].set_ylabel("volume fraction per bin"); ax[0].set_xlim(0, 0.9)
     ax[0].set_title("FA on the Colin27 mesh elements, per tissue label", fontsize=10); ax[0].legend(fontsize=8)
 
     fam = nib.load(HCP_FA).get_fdata()
     jm = nib.load(JHU_LABELS).get_fdata()
     names = list(JHU)
     mni = [np.median(fam[jm == JHU[n]]) for n in names]
+    ffm = nib.load(FMRIB58_FA).get_fdata() * FMRIB58_SCALE
+    mni58 = [np.median(ffm[jm == JHU[n]]) for n in names]
     col = [np.median(fa[(jhu == JHU[n]) & (label == 4)]) if ((jhu == JHU[n]) & (label == 4)).any() else np.nan for n in names]
     nwm = [((jhu == JHU[n]) & (label == 4)).sum() for n in names]
     frac_wm = [np.mean(label[jhu == JHU[n]] == 4) if (jhu == JHU[n]).any() else np.nan for n in names]
     xb = np.arange(len(names))
-    ax[1].bar(xb - 0.2, mni, 0.4, label="template, MNI voxels", color="#7f7f7f")
-    ax[1].bar(xb + 0.2, col, 0.4, label="Colin27 WM elements", color="#d62728")
+    ax[1].bar(xb - 0.27, mni, 0.27, label="HCP1065 mean-tensor FA, MNI voxels", color="#bbbbbb")
+    ax[1].bar(xb, mni58, 0.27, label="FMRIB58 FA, MNI voxels", color="#555555")
+    ax[1].bar(xb + 0.27, col, 0.27, label="Colin27 WM elements (FMRIB58 magnitude)", color="#d62728")
     ax[1].set_xticks(xb); ax[1].set_xticklabels(names, rotation=40, ha="right", fontsize=8)
     ax[1].set_ylabel("median FA"); ax[1].legend(fontsize=8)
     ax[1].set_title("JHU tracts: FA before / after registration", fontsize=10)
-    say("\nJHU label             MNI FA   Colin27 WM-element FA  (n WM elements, fraction of the label's elements in WM)")
-    for n, a, b, c, d in zip(names, mni, col, nwm, frac_wm):
-        say("%-20s  %.3f    %.3f   (%d, %.2f)" % (n, a, b, c, d))
+    say("\nJHU label            HCP1065 MNI  FMRIB58 MNI  Colin27 WM elements  (n WM elements, fraction of the label's elements in WM)")
+    for n, a, a2, b, c, d in zip(names, mni, mni58, col, nwm, frac_wm):
+        say("%-20s  %.3f        %.3f        %.3f   (%d, %.2f)" % (n, a, a2, b, c, d))
     fig.tight_layout(); fig.savefig(os.path.join(HERE, "check_fa.png"), dpi=110); plt.close(fig)
 
     # ---- direction-coloured maps, voxel field and per element
     Lc = nib.load(os.path.join(OUT, "logtensor_in_colin.nii.gz")).get_fdata(dtype=np.float32)
     brain = nib.load(COLIN_MASK).get_fdata() > 0.5
+    fm = nib.load(os.path.join(OUT, "fmrib58_fa_in_colin.nii.gz")).get_fdata()
     tree = cKDTree(e["centroid"])
     rgb_el = dec(fa, v1)
     rgb_el[label != 4] *= 0.35                         # non-WM elements dimmed
@@ -134,13 +147,13 @@ def main():
     fig, ax = plt.subplots(2, 3, figsize=(15, 9.5))
     eslices = {}
     for c, (name, (axis, w)) in enumerate(SLICES.items()):
-        f_, v_ = voxel_slice(Lc, brain, axis, w)
+        f_, v_ = voxel_slice(Lc, brain, axis, w, fm)
         show(ax[0, c], dec(f_, v_), axis, "voxel field, " + name)
         idx = element_slice(e, node, elem, tree, axis, w, f_.shape)
         eslices[name] = idx
         img = np.where(idx[..., None] >= 0, rgb_el[np.maximum(idx, 0)], 0)
         show(ax[1, c], img, axis, "mesh elements (WM bright, CSF/GM dimmed), " + name)
-    fig.suptitle("HCP1065 principal direction on Colin27 — red L–R, green A–P, blue S–I, brightness FA/%.1f" % FA_SCALE)
+    fig.suptitle("HCP1065 principal direction on Colin27 — red L–R, green A–P, blue S–I, brightness FMRIB58 FA/%.1f" % FA_SCALE)
     fig.tight_layout(); fig.savefig(os.path.join(HERE, "check_dec.png"), dpi=110); plt.close(fig)
 
     # ---- corpus callosum and corticospinal path
