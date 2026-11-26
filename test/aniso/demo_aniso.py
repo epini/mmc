@@ -57,7 +57,7 @@ for a, f, title in ((ax[0], f_iso, "isotropic, $\\mu_s$ = 10 mm$^{-1}$"),
                     (ax[1], f_ani, "fibres along x, $\\mu_{s\\parallel}$ = 5, $\\mu_{s\\perp}$ = 15 mm$^{-1}$")):
     sl = f[:, :, z0].T                       # rows = y, columns = x
     v = np.log10(np.maximum(sl, sl.max() * 1e-6))
-    im = a.imshow(v, origin="lower", extent=[0, 60, 0, 60], cmap="magma")
+    im = a.imshow(v, origin="lower", extent=[0, 60, 0, 60], cmap="viridis")
     a.contour(np.arange(61), np.arange(61), v, levels=8, colors="w", linewidths=0.5)
     a.set_title(title)
     a.set_xlabel("x (mm)")

@@ -106,12 +106,12 @@ def main():
             for col, (img, who) in enumerate(((im, "MMC aniso"), (ip, "PyXOpto"))):
                 a_ = ax[row, col]
                 a_.imshow(np.log10(np.maximum(img, 1e-12)), origin="lower", extent=ext,
-                          vmin=vmax - 5, vmax=vmax, cmap="magma")
+                          vmin=vmax - 5, vmax=vmax, cmap="viridis")
                 lv = vmax - np.arange(0.5, 5, 1.0)
-                a_.contour(xc[1:-1], xc[1:-1], np.log10(np.maximum(im, 1e-12)), lv[::-1], colors="c", linewidths=0.7)
+                a_.contour(xc[1:-1], xc[1:-1], np.log10(np.maximum(im, 1e-12)), lv[::-1], colors="r", linewidths=0.7)
                 a_.contour(xc[1:-1], xc[1:-1], np.log10(np.maximum(ip, 1e-12)), lv[::-1], colors="w",
                            linewidths=0.7, linestyles="--")
-                a_.set_title("%s(x,y) %s  (contours: cyan MMC, white PyXOpto)" % (name, who), fontsize=9)
+                a_.set_title("%s(x,y) %s  (contours: red MMC, white dashed PyXOpto)" % (name, who), fontsize=9)
                 a_.set_xlabel("x (mm)"); a_.set_ylabel("y (mm)")
                 a_.set_xlim(-25, 25); a_.set_ylim(-25, 25)
             a_ = ax[row, 2]
