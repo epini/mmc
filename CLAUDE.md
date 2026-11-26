@@ -91,6 +91,18 @@ Validation (`test/aniso/`, see its README):
       rescale the eigenvalues so that FA = FMRIB58 FA: keep the mean diffusivity and the ratio
       (λ2−λ3)/(λ1−λ3) (planar/linear shape of crossings), solve for the spread (clamp eigenvalues > 0). Keep both FAs in the npz.
       First instance for the optics: OFA = FA (his choice), to be confirmed on the new numbers.
+   h. **Optical mapping, decided 26/11** (his choices): anisotropy **only in WM elements** (label 4),
+      GM/CSF/scalp+skull isotropic; **no FA threshold**; **OFA = FA**. Per WM element the light
+      diffusion tensor D_opt has the eigenvectors and the eigenvalue *ratios* of the DTI tensor
+      (FMRIB58-rescaled, so its FA = OFA, crossings kept), scaled so that **mean(eig D_opt) = fixed**
+      = his measured WM value (D⊥ 1.69e-2, D∥ 2.47e-2 mm²/ps, mean 1.95e-2 mm²/ps; n = 1.39,
+      g = 0.97, μa = 0.043 mm⁻¹, 820 nm). Then invert the generalized ADE (`generalized_ade`, scalar HG g)
+      to get the scattering tensor M (same eigenvectors: check numerically on a rotated case that D and
+      M share the principal frame). The map D-shape -> M-shape is scale-free: build a lookup table on the
+      two eigenvalue ratios and invert it (no per-element root finding). Validate: inverting his
+      measured D∥, D⊥ must give reduced coefficients close to μ̃′s∥ 2.6, μ̃′s⊥ 4.4 mm⁻¹ (paper values come
+      from an MC fit, so expect agreement within their errors, not exactly). **Gotcha:** with a tensor
+      given, MMC ignores the `mus` column for ALL elements: non-WM elements need μs·I from their label.
    Licences: HCP open-access terms (derived data redistributable under the same terms, acknowledge HCP),
    FSL licence (non-commercial). IIT atlas rejected: its licence forbids adapting/building upon the data.
    MIDA (single subject, DTI + 116 structures) is the later "real subject" option.
