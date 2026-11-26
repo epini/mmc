@@ -63,6 +63,12 @@ python3 slab_vs_ade.py --mus 1 3 4 --g 0 --nphoton 1e7 --rot 30 --plot slab_g0_r
 python3 slab_vs_ade.py --mus 10 30 40 --g 0.9 --nphoton 3e6 --plot slab_g09_rot0.png
 ```
 
+## Test 4 — two layers with orthogonal fibres vs PyXOpto
+
+Slab of two 5 mm layers, fibres along x on top and along y below (μs∥ = 5, μs⊥ = 20 mm⁻¹), MMC on the GPU
+vs PyXOpto with two `AnisotropicLayer`s, plus the consistency check "one tensor, two element regions =
+whole slab": see `pyxopto_compare/README.md`. R, T, maps and optical path agree within statistics.
+
 ## Test 6 — GPU kernel vs CPU
 
 `gpu_vs_cpu.py`: slab of `pyxopto_compare` (full tensor, eigenvalues (5, 10, 20) mm⁻¹, all off-diagonals,
@@ -92,5 +98,4 @@ The CUDA path (`mmc_cu_host.cu`) is written but not yet compiled or tested.
 
 ## To do
 
-- Test 4: two half-spaces with orthogonal fibre directions (face crossing).
 - Test 5: 4-layer head (Fig. 5, Pini et al., Neurophotonics 2025).

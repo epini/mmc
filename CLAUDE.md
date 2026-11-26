@@ -58,11 +58,14 @@ Validation (`test/aniso/`, see its README):
 - GPU (OpenCL, RTX 3050) vs CPU on the PyXOpto slab, cases A/B, R, T, centroid, covariance,
   T(opl), T(x,y) (`gpu_vs_cpu.py`): agreement within statistics; ~45× faster than CPU (all cores).
   The CUDA host path is written but NOT compiled/tested: no CUDA toolkit (nvcc) on his PC.
+- Test 4: two 5 mm layers, fibres x / y (μs∥ 5, μs⊥ 20), MMC GPU vs PyXOpto (cases C, D in
+  `pyxopto_compare/`, `run_pmmc.py` + `compare.py`): R, T, maps, optical path within statistics;
+  one tensor split into two element regions = whole slab (`split_check.py`).
 
 ## Next steps (agreed order may change: ask him)
 
 1. CUDA build test (needs the CUDA toolkit, or a Linux machine); OpenCL is enough for production.
-2. Test 4: two domains with orthogonal fibres (face crossing). Test 5: 4-layer head of the 2025 paper.
+2. Test 5: 4-layer head of the 2025 paper.
 3. DTI → mesh pipeline (Python): template, Brain2Mesh/iso2mesh, tensors on element centroids in
    Log-Euclidean metric, rotation from image to mesh frame (check: corpus callosum must be left–right).
 4. MMClab (`cfg.elemmus` in `src/mmclab.cpp`) only if he asks: Python is the main interface.
@@ -95,6 +98,9 @@ Validation (`test/aniso/`, see its README):
 - Upstream bug (not ours, not fixed): `mmc_cl_host.c` respin>1 resets the seed buffer on kernel arg 15
   (gdetphoton) instead of 17 (gseed).
 - `.mch` detected photons store the launch weight: apply `exp(-mua * ppath)` yourself.
+- PyXOpto roulette: packets below weight 1e-4 survive with p = 0.01 (×100): with absorption its
+  optical-path tail beyond exp(-mua L) < 1e-4 is ~100× noisier; compare only above that weight.
+- PyXOpto runs on his NVIDIA through pyopencl (`mc.clinfo.gpus()[0]`), 1e8 photons in ~1 min.
 - MMC launches photons inside the medium (no specular loss); PyXOpto subtracts it and reports it.
 - pmmc `mmclab()` default output is a 1 mm voxel grid (`flux` shape (nx, ny, nz, ngates)).
 - `iso2mesh.meshabox` downloads tetgen at runtime; `meshgrid5` needs no download.

@@ -101,7 +101,7 @@ def binned(r, w, sel, n, key):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--case", default="A", choices=sorted(CASES))
+    ap.add_argument("--case", default="A", choices=["A", "B"])
     ap.add_argument("--nphoton", type=float, default=1e6)
     ap.add_argument("--compute", default="opencl", choices=["opencl", "cuda"])
     ap.add_argument("--gpuid", type=int, default=1)

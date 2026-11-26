@@ -29,7 +29,7 @@ C_MM_NS = 299.792458
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--case", default="A", choices=sorted(CASES))
+    ap.add_argument("--case", default="A", choices=["A", "B"])   # single layer; any case: run_pmmc.py
     ap.add_argument("--nphoton", type=float, default=1e7)
     ap.add_argument("--W", type=float, default=400.0, help="lateral size of the box, mm")
     ap.add_argument("--seed", type=int, default=1648335518)

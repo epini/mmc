@@ -5,6 +5,10 @@ origin of the top face, scattering tensor with three distinct eigenvalues and pr
 axes rotated so that the tensor has all off-diagonal components (Mxy, Mxz, Myz != 0).
 Units here: mm, mm^-1. PyXOpto works in m: the conversion is done in run_pyxopto.py.
 
+Cases C and D (test 4) stack two layers with the same mua, g, n and orthogonal fibres
+(uniaxial tensors, fibres along x in the top layer and along y in the bottom one): the photons
+cross the face between two tensor domains, with no Fresnel reflection there.
+
 Both codes produce, for the top (reflectance) and bottom (transmittance) surfaces, the
 weight per launched photon binned in (optical path length, y, x), with out-of-range
 values clipped into the edge bins (as the PyXOpto CartesianPl detector does).
@@ -17,6 +21,11 @@ CASES = {
     "A": dict(L=10.0, n=1.4, mua=0.0, eig=(5.0, 10.0, 20.0), euler_zyz=(30.0, 40.0, 50.0), g=0.8),
     # same, with absorption
     "B": dict(L=10.0, n=1.4, mua=0.01, eig=(5.0, 10.0, 20.0), euler_zyz=(30.0, 40.0, 50.0), g=0.8),
+    # two layers of 5 mm, mus_par = 5, mus_perp = 20 1/mm, fibres along x (top) and y (bottom)
+    "C": dict(L=10.0, n=1.4, mua=0.0, g=0.8, mus_par=5.0, mus_perp=20.0,
+              layers=((5.0, 0.0), (5.0, 90.0))),
+    "D": dict(L=10.0, n=1.4, mua=0.01, g=0.8, mus_par=5.0, mus_perp=20.0,
+              layers=((5.0, 0.0), (5.0, 90.0))),
 }
 
 # detector grid, mm (bin edges = linspace(start, stop, n+1))
@@ -33,10 +42,24 @@ def rotation_zyz(a, b, c):
 
 
 def mus_tensor(case):
-    """Full symmetric 3x3 scattering tensor in mm^-1."""
+    """Full symmetric 3x3 scattering tensor in mm^-1 (single-layer cases)."""
     c = CASES[case]
     R = rotation_zyz(*c["euler_zyz"])
     return R @ np.diag(c["eig"]) @ R.T
+
+
+def uniaxial(mus_par, mus_perp, phi_deg):
+    """Fibre along (cos phi, sin phi, 0): M = mus_perp I + (mus_par - mus_perp) f f^T, 1/mm."""
+    f = np.array([np.cos(np.deg2rad(phi_deg)), np.sin(np.deg2rad(phi_deg)), 0.0])
+    return mus_perp * np.eye(3) + (mus_par - mus_perp) * np.outer(f, f)
+
+
+def layers(case):
+    """List of (thickness in mm, 3x3 tensor in 1/mm), from the top (z = 0) down."""
+    c = CASES[case]
+    if "layers" not in c:
+        return [(c["L"], mus_tensor(case))]
+    return [(d, uniaxial(c["mus_par"], c["mus_perp"], phi)) for d, phi in c["layers"]]
 
 
 def edges(ax):

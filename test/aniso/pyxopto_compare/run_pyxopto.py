@@ -15,7 +15,7 @@ import time
 import numpy as np
 from xopto.mcml import mc
 
-from common import CASES, XY_AXIS, PL_AXIS, mus_tensor
+from common import CASES, XY_AXIS, PL_AXIS, layers
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -30,14 +30,13 @@ def main():
 
     c = CASES[a.case]
     mm = 1e-3
-    M = mus_tensor(a.case) / mm                   # 1/m
     pf = mc.mcpf.Hg(c["g"])
 
-    layers = mc.mclayer.Layers([
-        mc.mclayer.AnisotropicLayer(d=0.0, n=1.0, mua=0.0, mus=0.0, pf=pf),
-        mc.mclayer.AnisotropicLayer(d=c["L"] * mm, n=c["n"], mua=c["mua"] / mm, mus=M, pf=pf),
-        mc.mclayer.AnisotropicLayer(d=0.0, n=1.0, mua=0.0, mus=0.0, pf=pf),
-    ])
+    # one AnisotropicLayer per slab layer (cases C, D: two), tensors in 1/m, between two d = 0 outer layers
+    slab = [mc.mclayer.AnisotropicLayer(d=d * mm, n=c["n"], mua=c["mua"] / mm, mus=M / mm, pf=pf)
+            for d, M in layers(a.case)]
+    outer = [mc.mclayer.AnisotropicLayer(d=0.0, n=1.0, mua=0.0, mus=0.0, pf=pf) for _ in range(2)]
+    stack = mc.mclayer.Layers([outer[0]] + slab + [outer[1]])
     source = mc.mcsource.Line((0.0, 0.0, 0.0), (0.0, 0.0, 1.0))
 
     def det():
@@ -49,10 +48,11 @@ def main():
     detectors = mc.mcdetector.Detectors(top=det(), bottom=det(), specular=mc.mcdetector.Total())
     devices = mc.clinfo.gpus() or mc.clinfo.cpus()   # CPU fallback (e.g. pocl) for testing
     print("OpenCL devices:", devices)
-    mc_obj = mc.Mc(layers, source, detectors, cl_devices=devices[a.device])
+    mc_obj = mc.Mc(stack, source, detectors, cl_devices=devices[a.device])
     mc_obj.rmax = 1.0                             # 1 m: photons are never killed laterally
 
-    print("tensor (1/mm):\n", np.round(M * mm, 4))
+    for d, M in layers(a.case):
+        print("layer %g mm, tensor (1/mm):\n" % d, np.round(M, 4))
     t0 = time.time()
     done, res = 0, None
     while done < a.nphoton:

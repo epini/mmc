@@ -52,3 +52,49 @@ overestimate, hence χ² < 1.
 
 Note on `run_mmc.py`: the MMC `.mch` stores the launch weight of detected photons; absorption is applied
 afterwards as exp(−μa · partial path), as in MCX/MMC.
+
+## Test 4 — two layers with orthogonal fibres (cases C, D)
+
+Same slab, cut into two 5 mm layers with the same n = 1.4, g = 0.8, μa (C: 0, D: 0.01 mm⁻¹) and
+uniaxial tensors M = μs⊥ I + (μs∥ − μs⊥) f̂f̂ᵀ, μs∥ = 5, μs⊥ = 20 mm⁻¹: fibres f̂ = x̂ in the top layer,
+ŷ in the bottom one. Only the tensor changes at z = 5 mm (no Fresnel there): the photons cross the face
+between two tensor domains. PyXOpto: two `AnisotropicLayer`s. MMC: two stacked 6-tetrahedron boxes with a
+conforming common face and element labels 1, 2 (`run_pmmc.py`, pmmc on the GPU, 10⁸ photons in ~1 min).
+
+```
+python run_pyxopto.py --case C --nphoton 1e8
+python run_pmmc.py    --case C --nphoton 1e8      # compute="opencl", gpuid=1; --compute sse for the CPU
+python compare.py     --case C --plot compare_C.png
+```
+
+Results (26/11/2026, 10⁸ photons per code, both on the RTX 3050):
+
+| | Case C (μa = 0) | Case D (μa = 0.01 mm⁻¹) |
+|---|---|---|
+| R: MMC / PyXOpto | 0.88476 / 0.88479 (−0.7σ) | 0.70087 / 0.70087 (0.0σ) |
+| T: MMC / PyXOpto | 0.08746 / 0.08743 (0.8σ) | 0.01466 / 0.01466 (0.0σ) |
+| var R x, y (mm²) | (18.32, 9.11) / (18.33, 9.11) | (7.44, 2.85) / (7.44, 2.85) |
+| var T x, y (mm²) | (82.34, 82.46) / (82.41, 82.35) | (46.94, 47.01) / (46.99, 46.95) |
+| R(x,y), T(x,y) map, reduced χ² | 0.94, 0.97 (≈3100 bins) | 0.34, 0.22* |
+| R, T(optical path), reduced χ² | 0.97, 1.01 | 1.07, 0.88 (exact variance, opl < 1285 mm)** |
+
+R(x,y) is elongated along the fibres of the top layer (var x / var y ≈ 2); T(x,y) is nearly round,
+the two orthogonal layers compensate each other. Plots: `compare_C.png`, `compare_D.png`.
+
+\* Counting-statistics errors, an overestimate with absorption (see above).
+\** With absorption `compare.py` also uses the exact MMC variance (Σw², saved by `run_pmmc.py`) for both
+codes, in the bins where exp(−μa·opl/n) > 10⁻⁴. Below that weight PyXOpto terminates packets by lottery
+(`McMinimumPacketWeight` = 10⁻⁴, survival 1%, weight ×100): its variance there is ~100× larger, and over all
+bins the χ² with the MMC variance would be ≈ 10, driven only by the opl > 1500 mm tail.
+
+### Consistency check: one tensor, two element regions
+
+`split_check.py`: the single-tensor slab of case A or B meshed as two boxes (3 + 7 mm, labels 1 and 2, same
+properties and tensor) vs the 6-element slab, 10⁷ photons each, independent seeds, GPU.
+
+| | R, z | T, z | χ²/bin: R opl, R map, T opl, T map |
+|---|---|---|---|
+| A (μa = 0) | −0.34 | +0.93 | 1.05, 0.99, 1.18, 1.00 |
+| B (μa = 0.01 mm⁻¹) | −0.18 | +0.12 | 1.03, 0.97, 1.16, 1.00 |
+
+With the same seed the two meshes give R, T equal to |z| < 0.1 (correlated runs, for information).
