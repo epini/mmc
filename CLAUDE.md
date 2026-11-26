@@ -14,7 +14,7 @@ Anisotropy (OFA). Plan: 1) tensor scattering in MMC (CPU ✓, GPU OpenCL ✓); 2
 (MNI152 + HCP1065 proposed); 3) FA → OFA → (μs∥, μs⊥) mapping via his generalized diffusion theory;
 4) GPU production runs; 5) TD-fNIRS / whole-head / PBM studies. Software paper + application paper.
 
-References (in his claude.ai project, not in this repo):
+References (PDFs in `docs/aniso/papers/` on his PC, git-ignored: read them there when needed):
 - Pini et al., Neurophotonics 12, 045003 (2025): human WM, μ̃′s⊥ = 4.4, μ̃′s∥ = 2.6 mm⁻¹, g ≈ 0.97,
   OFA = 0.23 (DTI FA there ≈ 0.3–0.4), μa = 0.043 mm⁻¹ at 820 nm; 4-layer head MC (Table 1, Fig. 5).
 - Pini, Giusfredi, Pattelli, Adv. Theory Simul. 9, e70430 (2026): generalized ADE for a full scattering
