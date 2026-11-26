@@ -64,10 +64,29 @@ Validation (`test/aniso/`, see its README):
 
 ## Next steps (agreed order may change: ask him)
 
-1. CUDA build test (needs the CUDA toolkit, or a Linux machine); OpenCL is enough for production.
-2. Test 5: 4-layer head of the 2025 paper.
-3. DTI → mesh pipeline (Python): template, Brain2Mesh/iso2mesh, tensors on element centroids in
-   Log-Euclidean metric, rotation from image to mesh frame (check: corpus callosum must be left–right).
+1. Test 5: 4-layer head of the 2025 paper (Table 1, Fig. 5), MMC aniso vs his PyXOpto result.
+2. **Head model, decided 26/11/2026: Colin27 + HCP1065 DTI template registered onto it**
+   (comparable with Lewis & Fang 2025, same Colin27 mesh). Steps:
+   a. Data: Colin27 T1 + the Colin27 tissue labels / mesh used by Lewis & Fang (Brain2Mesh, 4 layers:
+      scalp+skull, CSF, GM, WM; check MCX/MMC examples and the neurojson brain mesh library);
+      FSL `MNI152_T1_1mm` and the HCP1065 templates (`FSL_HCP1065_tensor_1mm`, `_FA_`, `_V1_`),
+      available without a full FSL install (FSL conda channel data packages). FSL itself does not run
+      on native Windows: prefer Python tools (ANTsPy `antspyx` or DIPY SyN, nibabel).
+   b. Nonlinear registration MNI152 T1 -> Colin27 T1.
+   c. Warp the tensor field with **reorientation** (PPD or finite strain from the local Jacobian);
+      never resample tensor components as scalars. Interpolate tensors in Log-Euclidean metric.
+   d. Tensor at the centroid of each Colin27 WM tetrahedron; store per element the diffusion tensor,
+      FA and principal direction (keep them: the optical mapping comes later).
+   e. Checks with figures: FA over the Colin27 WM/GM labels (FA histogram per tissue, fraction of WM
+      elements with FA > 0.2), direction-coloured map (red L-R, green A-P, blue S-I), corpus callosum
+      L-R and corticospinal tract S-I, slices in the three planes.
+   f. **Stop before the FA -> OFA -> (mus_par, mus_perp) mapping**: that is his decision (calibration
+      on template FA vs his OFA 0.23, generalized ADE inversion). Only a placeholder mapping, clearly
+      labelled, for a first demo run if useful.
+   Licences: HCP open-access terms (derived data redistributable under the same terms, acknowledge HCP),
+   FSL licence (non-commercial). IIT atlas rejected: its licence forbids adapting/building upon the data.
+   MIDA (single subject, DTI + 116 structures) is the later "real subject" option.
+3. CUDA build test (needs the CUDA toolkit, or a Linux machine); OpenCL is enough for production.
 4. MMClab (`cfg.elemmus` in `src/mmclab.cpp`) only if he asks: Python is the main interface.
 
 ## His machine (Windows 11, NVIDIA GPU)
