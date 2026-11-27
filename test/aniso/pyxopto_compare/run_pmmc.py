@@ -10,7 +10,7 @@ and bottom (T) faces, clipped into the edge bins.
 
 Mesh: one 6-tetrahedron box per layer of the case, stacked in z, laterally W wide; the face
 between two boxes is triangulated the same way on both sides (conforming). Layer k has the
-element label k+1, all labels with the same mua, g, n: only the tensor changes between layers.
+element label k+1 with the mua, g, n of that layer (Fresnel at faces where n changes).
 --split d1 d2 ... cuts a single-layer case into boxes of these thicknesses (same tensor in
 all of them), for the consistency check in split_check.py.
 """
@@ -22,7 +22,7 @@ import time
 
 import numpy as np
 
-from common import CASES, XY_AXIS, PL_AXIS, layers, bin_clipped
+from common import CASES, C_MM_NS, axes, stack, bin_clipped
 
 import pmmc
 
@@ -50,19 +50,21 @@ def packed(M):
 def simulate(case, nphoton, compute="opencl", gpuid=1, seed=1648335518, split=None, W=400.0,
              batch=5e6, verbose=False):
     """R and T histograms (weight per launched photon) for a case; split = list of box thicknesses."""
-    c = CASES[case]
-    lay = layers(case)
+    XY_AXIS, PL_AXIS = axes(case)
+    lay = stack(case)
     if split is not None:
-        if len(lay) != 1 or abs(sum(split) - lay[0][0]) > 1e-9:
+        if len(lay) != 1 or abs(sum(split) - lay[0]["d"]) > 1e-9:
             raise ValueError("--split needs a single-layer case and thicknesses that add up to L")
-        lay = [(d, lay[0][1]) for d in split]
-    thick = [d for d, _ in lay]
+        lay = [dict(lay[0], d=d) for d in split]
+    thick = [l["d"] for l in lay]
     L = sum(thick)
     node, elem, label = stacked_mesh(thick, W)
-    elemmus = np.array([packed(lay[k - 1][1]) for k in label])
-    med = [c["mua"], float(np.trace(lay[0][1]) / 3), c["g"], c["n"]]   # mus column unused with elemmus
+    elemmus = np.array([packed(lay[k - 1]["M"]) for k in label])
+    med = [[l["mua"], float(np.trace(l["M"]) / 3), l["g"], l["n"]] for l in lay]   # mus unused with elemmus
+    mua = np.array([l["mua"] for l in lay])
+    nidx = np.array([l["n"] for l in lay])
 
-    tend = 1.5 * PL_AXIS[1] / 299.792458    # ns -> s below; beyond the last optical-path bin
+    tend = 1.5 * PL_AXIS[1] / C_MM_NS    # ns -> s below; beyond the last optical-path bin
     shape = (PL_AXIS[2], XY_AXIS[2], XY_AXIS[2])
     hist = {f: np.zeros(shape) for f in ("top", "bottom", "top2", "bottom2")}   # sums of w and w^2
     side, done, k, t0 = 0.0, 0, 0, time.time()
@@ -70,11 +72,14 @@ def simulate(case, nphoton, compute="opencl", gpuid=1, seed=1648335518, split=No
         n = int(min(batch, nphoton - done))
         cfg = {
             "nphoton": n, "seed": seed + 7919 * k, "node": node, "elem": elem, "elemprop": label,
-            "prop": [[0, 0, 1, 1]] + [med] * len(lay), "elemmus": elemmus,
+            "prop": [[0, 0, 1, 1]] + med, "elemmus": elemmus,
             "srcpos": [0.0, 0.0, 0.0], "srcdir": [0, 0, 1], "e0": 1,
             "tstart": 0, "tend": tend * 1e-9, "tstep": tend * 1e-9,
             "detpos": [[0.0, 0.0, L / 2, 2 * W]], "issaveexit": 1, "maxdetphoton": n,
             "method": "elem", "compute": compute, "gpuid": gpuid,
+            # no Russian roulette: detp keeps the launch weight w0, not the x roulettesize of the
+            # survivors, so w0 exp(-mua ppath) would miss them below minenergy; tend stops the photons
+            "minenergy": 0.0,
         }
         if not verbose:   # pmmc prints the MMC banner and log on stdout
             sys.stdout.flush()
@@ -87,9 +92,10 @@ def simulate(case, nphoton, compute="opencl", gpuid=1, seed=1648335518, split=No
                 os.dup2(keep, fd)
                 os.close(keep)
         p = np.asarray(d["p"])
-        ppath = np.asarray(d["ppath"]).sum(axis=1)          # mm, all layers
-        w = np.asarray(d["w0"]) * np.exp(-c["mua"] * ppath)  # detp stores the launch weight
-        ix, iy, ipl = bin_clipped(p[:, 0], XY_AXIS), bin_clipped(p[:, 1], XY_AXIS), bin_clipped(ppath * c["n"], PL_AXIS)
+        ppath = np.asarray(d["ppath"]).reshape(len(p), -1)  # mm per layer
+        w = np.asarray(d["w0"]) * np.exp(-ppath @ mua)      # detp stores the launch weight
+        opl = ppath @ nidx                                  # optical path length, mm
+        ix, iy, ipl = bin_clipped(p[:, 0], XY_AXIS), bin_clipped(p[:, 1], XY_AXIS), bin_clipped(opl, PL_AXIS)
         on = {}
         for face, zf in (("top", 0.0), ("bottom", L)):
             on[face] = np.abs(p[:, 2] - zf) < 1e-3
