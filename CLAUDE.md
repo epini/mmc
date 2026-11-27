@@ -120,6 +120,29 @@ Validation (`test/aniso/`, see its README):
    Licences: HCP open-access terms (derived data redistributable under the same terms, acknowledge HCP),
    FSL licence (non-commercial). IIT atlas rejected: its licence forbids adapting/building upon the data.
    MIDA (single subject, DTI + 116 structures) is the later "real subject" option.
+2b. **Mouse optogenetics, started 27/11** (his idea; plan and literature in the claude.ai project doc
+   `claude/optogenetica-topo-letteratura-e-piano.md`). Why: in the human head the scalp signal never
+   sees the WM tensor (photons avoid WM); with an implanted fibre the source is inside the tissue,
+   next to the corpus callosum. Regime mostly NOT diffusive at visible wavelengths: no FA -> OFA -> ADE
+   mapping here, set (mus_par, mus_perp, g) directly. Mouse CC FA is ~0.6 (in vivo, adult).
+   **Step 1, block test, parametric** (run on maxwell, CUDA), in `test/aniso/mouse/`:
+   - Geometry: GM block 6x6x6 mm (z down = depth), CC slab 0.25 mm thick, normal z, axons along x
+     (medio-lateral). Mesh fine enough near the slab (<= 0.05 mm edges there); outputs on a 0.02 mm grid
+     (pmmc's default output grid is 1 mm: set it).
+   - Fibre: flat-cleaved, 200 um core, NA 0.37, pointing +z (into depth), perpendicular to the axons;
+     emission uniform over the core disk, angles uniform within asin(NA/n_tissue) (n = 1.36). If no MMC
+     source type does disk + cone, build the closest one and document it. Fibre body not meshed (v1).
+     Tip positions: 0.3 mm above the slab (in GM), inside the slab (mid-plane), 0.3 mm below it.
+   - Optics, **placeholders to be replaced by his choice**: 473 nm: GM mus 21 /mm (Yona 2016, ~47 um),
+     g 0.88, mua 0.1 /mm, n 1.36. CC: same g, mua, n; mean mus = 6x GM, uniaxial along x with
+     mus_par/mus_perp = r, (mus_par + 2 mus_perp)/3 kept fixed; r in {1, 0.7, 0.5, 0.3, 0.2}.
+     Then 590 nm: mus scaled by (590/473)^-1.3, mua 0.05 /mm (also placeholders).
+   - Outputs per case: fluence maps (log, viridis) in the xz, yz, xy planes through the tip; ratio
+     aniso/iso maps (RdBu_r); profiles along x and along y inside the slab and just below it; volume and
+     x/y/z extents above an activation threshold (1 mW/mm2 for 10 mW out of the fibre, report others
+     too); fraction absorbed in the slab; power crossing the slab into the tissue below. Summary curves
+     of each metric vs r (one figure per wavelength and tip position). Batches for error bars.
+   - Stop there and report: no atlas mesh or Allen data until he decides.
 3. ~~CUDA build test~~ done 27/11 on maxwell (see "What is done" and the maxwell section).
 4. MMClab (`cfg.elemmus` in `src/mmclab.cpp`) only if he asks: Python is the main interface.
 
