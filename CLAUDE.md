@@ -107,8 +107,16 @@ Validation (`test/aniso/`, see its README):
       given, MMC ignores the `mus` column for ALL elements: non-WM elements need μs·I from their label.
    i. **First head demo done 27/11** (`demo_head_gpu.py`, source ~C3, 5e7 photons/case): aniso vs iso WM
       (same mean D) changes the fluence inside WM by about ±10% (significant), but CW reflectance and
-      GM partial path at the scalp by < 1–2% up to 60 mm. Next (agreed 27/11): **time domain**, same
-      run: TPSF and per-gate mean partial path in GM/WM vs distance and azimuth, late gates.
+      GM partial path at the scalp by < 1–2% up to 60 mm.
+   j. **Time domain done 27/11 on maxwell** (`demo_head_gpu.py --compute cuda` 2e8 photons/case, 40
+      batches, then `demo_head_td.py`): TPSF on the 20/30/40 mm rings unchanged (mean time of flight
+      within 0.1 ± 0.9 ps), per-gate <L_GM>, <L_WM> (0.5 ns gates up to 5 ns, late gates included)
+      within ~1% (≤ 2 SE), azimuth on the 25–35 mm ring: χ² of the <L_GM> change 11.8 (0–1 ns) and
+      6.1 (2–5 ns) over 12 sectors, i.e. nothing. CW at 2e8: R, <L_GM> within 0.5%. The WM tensor
+      redistributes light inside WM (±10%) but not the scalp signal or its GM/WM sensitivities.
+      Disk: the per-photon exits (15–45 mm) are ~25e6 photons/case = 900 MB of npz at 2e8; the
+      `demo_head_gpu_<case>.npz` resume files (another 1.6 GB) can be deleted after the run.
+      Next: ask him (other source positions / over the CC or CST, larger OFA, Test 5).
    Licences: HCP open-access terms (derived data redistributable under the same terms, acknowledge HCP),
    FSL licence (non-commercial). IIT atlas rejected: its licence forbids adapting/building upon the data.
    MIDA (single subject, DTI + 116 structures) is the later "real subject" option.
@@ -151,6 +159,11 @@ Validation (`test/aniso/`, see its README):
 - OpenCL lists only the NVIDIA (no iGPU), still `gpuid=1`. pmmc CPU uses all 128 cores.
 - Builds leave untracked `bin/ lib/ src/built/ src/lib/ src/*.o src/zmat/**/*.o src/mmc_core.clh
   pmmc/build/ pmmc/*.egg-info`: listed in `.git/info/exclude` on maxwell, never commit them.
+- Head-model data: `~/headmodel_data` (`colin27/` + `out/optics_wm.npz`, `out/colin27_hcp1065_elem.npz`;
+  originals in `~/headmodel_data_in`); always `export HEADMODEL_DATA=~/headmodel_data` (the default
+  `<repo>/../../headmodel_data` is `/home/headmodel_data` here). 2e8 photons/case on CUDA: ~5 min.
+- Pushing from maxwell hangs/fails when Claude runs it (credential prompt): he pushes with `! git push`.
+  He also works from Windows on the same branch: `git fetch` and check origin before starting work.
 - Status 27/11: test_pmmc.py all PASS (incl. pmmc vs CLI), CLI Test 1 bitwise for P/H/B/S/G,
   slab_vs_ade within statistics (g = 0.9 at 3e6 photons: ±1.5% seed-to-seed spread on D),
   gpu_vs_cpu.py A/B on opencl and cuda PASS, backends_compare.py PASS.

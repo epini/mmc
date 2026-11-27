@@ -2,6 +2,7 @@
 """First GPU demo on the Colin27 head (CLAUDE.md step 2h): isotropic vs anisotropic white matter.
 
     python demo_head_gpu.py --nphoton 3e7          # conda env pyxoptoenv, after optics.py; GPU OpenCL
+    python demo_head_gpu.py --nphoton 2e8 --batch 5e6 --compute cuda   # pmmc built with CUDA
     python demo_head_gpu.py --plot-only            # figures and numbers from OUT/demo_head_gpu.npz
 
 Two runs with the same source, seeds and photons, differing only in the WM (label 4):
@@ -125,7 +126,7 @@ def tensors(label, M_wm, aniso):
     return E
 
 
-def simulate(nphoton, batch, gpuid, seed, verbose, resume=False):
+def simulate(nphoton, batch, gpuid, seed, verbose, resume=False, compute="opencl"):
     import pmmc
     node, elem, label = load_mesh()
     o = np.load(os.path.join(OUT, "optics_wm.npz"))
@@ -160,7 +161,7 @@ def simulate(nphoton, batch, gpuid, seed, verbose, resume=False):
         for k in range(nb):
             cfg = dict(nphoton=int(batch), seed=seed + 7919 * k, node=node, elem=elem, elemprop=label,
                        prop=prop, elemmus=E, srcpos=list(src + 1e-3 * sdir), srcdir=list(sdir),
-                       tstart=0, tend=TEND, tstep=TEND, method="elem", compute="opencl", gpuid=gpuid,
+                       tstart=0, tend=TEND, tstep=TEND, method="elem", compute=compute, gpuid=gpuid,
                        issaveexit=1, detpos=[list(node.mean(0)) + [1000.0]], maxdetphoton=int(batch),
                        minenergy=0.0)
             if not verbose:
@@ -197,7 +198,7 @@ def simulate(nphoton, batch, gpuid, seed, verbose, resume=False):
         res[case] = dict(flux=flux, rad=tal, az=az, raw=np.concatenate(raw), rawb=np.concatenate(rawb),
                          seconds=time.time() - t0)
         np.savez(part, nb=nb, batch=batch, seed=seed, **res[case])
-    np.savez_compressed(FRAC + ".npz", src=src, sdir=sdir, e1=e1, e2=e2, batch=batch, nb=nb,
+    np.savez_compressed(FRAC + ".npz", src=src, sdir=sdir, e1=e1, e2=e2, batch=batch, nb=nb, compute=compute,
                         mus_iso=MUS_ISO, prop=np.array(prop),
                         **{"%s_%s" % (c, k): v for c in res for k, v in res[c].items()})
 
@@ -230,8 +231,8 @@ def plot():
         log.append(s)
 
     nb, batch = int(z["nb"]), float(z["batch"])
-    say("Colin27 head, OpenCL GPU, %d x %.3g photons per case (iso %.0f s, aniso %.0f s)"
-        % (nb, batch, float(z["iso_seconds"]), float(z["aniso_seconds"])))
+    say("Colin27 head, %s GPU, %d x %.3g photons per case (iso %.0f s, aniso %.0f s)"
+        % (str(z["compute"]) if "compute" in z else "opencl", nb, batch, float(z["iso_seconds"]), float(z["aniso_seconds"])))
     say("source (mesh frame) %s mm, world RAS %s mm, inward direction %s"
         % (np.round(src, 1), np.round(src - MESH_ORIGIN, 1), np.round(sdir, 3)))
     say("WM isotropic mu_s %.2f 1/mm (mu's %.3f); prop rows [mua mus g n]: %s"
@@ -366,10 +367,11 @@ def main():
     ap.add_argument("--seed", type=int, default=1648335518)
     ap.add_argument("--plot-only", action="store_true")
     ap.add_argument("--verbose", action="store_true")
+    ap.add_argument("--compute", default="opencl", choices=["opencl", "cuda"])
     ap.add_argument("--resume", action="store_true", help="reuse a finished case (demo_head_gpu_<case>.npz)")
     a = ap.parse_args()
     if not a.plot_only:
-        simulate(a.nphoton, a.batch, a.gpuid, a.seed, a.verbose, a.resume)
+        simulate(a.nphoton, a.batch, a.gpuid, a.seed, a.verbose, a.resume, a.compute)
     plot()
 
 
