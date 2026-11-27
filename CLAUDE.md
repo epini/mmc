@@ -57,7 +57,9 @@ Validation (`test/aniso/`, see its README):
 - `test_pmmc.py` (pmmc interface + error cases), `demo_aniso.py` (visual example);
 - GPU (OpenCL, RTX 3050) vs CPU on the PyXOpto slab, cases A/B, R, T, centroid, covariance,
   T(opl), T(x,y) (`gpu_vs_cpu.py`): agreement within statistics; ~45× faster than CPU (all cores).
-  The CUDA host path is written but NOT compiled/tested: no CUDA toolkit (nvcc) on his PC.
+- CUDA (`compute="cuda"`) tested 27/11 on maxwell (Quadro RTX 6000, CUDA 11.5): CUDA vs OpenCL vs CPU
+  on the same slab, case B, 1e7 photons each (`backends_compare.py`): all |z| < 1.4, χ² pass; isotropic
+  tensor = vanilla on CUDA. 1e7 photons: CUDA 1.9 s, OpenCL 5.9 s (3.9 s of it JIT), CPU 526 s (128 cores).
 - Test 4: two 5 mm layers, fibres x / y (μs∥ 5, μs⊥ 20), MMC GPU vs PyXOpto (cases C, D in
   `pyxopto_compare/`, `run_pmmc.py` + `compare.py`): R, T, maps, optical path within statistics;
   one tensor split into two element regions = whole slab (`split_check.py`).
@@ -110,7 +112,7 @@ Validation (`test/aniso/`, see its README):
    Licences: HCP open-access terms (derived data redistributable under the same terms, acknowledge HCP),
    FSL licence (non-commercial). IIT atlas rejected: its licence forbids adapting/building upon the data.
    MIDA (single subject, DTI + 116 structures) is the later "real subject" option.
-3. CUDA build test (needs the CUDA toolkit, or a Linux machine); OpenCL is enough for production.
+3. ~~CUDA build test~~ done 27/11 on maxwell (see "What is done" and the maxwell section).
 4. MMClab (`cfg.elemmus` in `src/mmclab.cpp`) only if he asks: Python is the main interface.
 
 ## His machine (Windows 11, NVIDIA GPU)
@@ -131,6 +133,27 @@ Validation (`test/aniso/`, see its README):
   `call vcvars64.bat`, set PATH/CMAKE_GENERATOR/CC/CXX/OpenCL_ROOT as above, then
   `cd pmmc && pip install --no-build-isolation .`
 - The command-line `mmc.exe` is not built on his PC (test 3 of `test_pmmc.py` is skipped there).
+
+## maxwell (Linux workstation: Ubuntu 22.04, 128 cores, Quadro RTX 6000 24 GB, CUDA 11.5)
+
+- Repo `~/aniso-mmc` (same origin). Disk ~90% full: keep large outputs small, delete `.mch`/`.mc2`.
+- Python: venv **`~/venvs/aniso`** (system Python 3.10, no conda), `source ~/venvs/aniso/bin/activate`.
+  Made with: `python3 -m venv ~/venvs/aniso; pip install numpy scipy matplotlib pyopencl iso2mesh
+  nibabel pmcx ninja`; PyXOpto is not on PyPI: `pip install` of a copy of `~/Desktop/PyXOpto` (his
+  epini/pyxopto fork with local uncommitted changes; copy it first, the in-tree build writes there);
+  `pip install "git+https://github.com/epini/ADE#subdirectory=python"` (generalized_ade).
+  The older venv `~/venvs/pyxopto` (Jan 2026, PyXOpto only) was left untouched.
+- pmmc with CUDA + OpenCL (~1 min):
+  `git submodule update --init src/pybind11; cd pmmc;
+  CMAKE_ARGS=$'-DBUILD_CUDA=ON\t-DCUDA_ARCHS=75\t-DBUILD_MEX=OFF' pip install --no-build-isolation .`
+  (tab-separated CMAKE_ARGS; sm_75 = RTX 6000; the module is the top-level `_pmmc`).
+- CLI: `cd src && make cuda -j16` → `bin/mmc` with `-c opencl|cuda|sse` (all CUDA archs, 55 MB).
+- OpenCL lists only the NVIDIA (no iGPU), still `gpuid=1`. pmmc CPU uses all 128 cores.
+- Builds leave untracked `bin/ lib/ src/built/ src/lib/ src/*.o src/zmat/**/*.o src/mmc_core.clh
+  pmmc/build/ pmmc/*.egg-info`: listed in `.git/info/exclude` on maxwell, never commit them.
+- Status 27/11: test_pmmc.py all PASS (incl. pmmc vs CLI), CLI Test 1 bitwise for P/H/B/S/G,
+  slab_vs_ade within statistics (g = 0.9 at 3e6 photons: ±1.5% seed-to-seed spread on D),
+  gpu_vs_cpu.py A/B on opencl and cuda PASS, backends_compare.py PASS.
 
 ## Gotchas learned
 
