@@ -94,7 +94,29 @@ python gpu_vs_cpu.py --case B --nphoton 1e6
 
 At 10⁶ photons (cases A and B) all |z| < 2.5 and the χ² tests pass. GPU ≈ 45× faster than the CPU (all cores).
 Vanilla MMC (isotropic μs = 10 mm⁻¹, case B, 10⁷ photons) gives the same GPU–CPU agreement (⟨opl⟩_T z = 0.1).
-The CUDA path (`mmc_cu_host.cu`) is written but not yet compiled or tested.
+
+## Test 7 — CUDA vs OpenCL vs CPU
+
+`backends_compare.py` (pmmc built with `CMAKE_ARGS=-DBUILD_CUDA=ON`): same slab and observables as Test 6,
+`compute="cuda"`, `"opencl"` and `"sse"`, independent random streams, every pair compared; plus on CUDA the
+isotropic tensor against vanilla MMC, and the anisotropic run against the isotropic one (the tensor reaches
+the CUDA kernel). Case B, 10⁷ photons per backend, Quadro RTX 6000 (CUDA 11.5, Linux), 128-core CPU:
+
+| | CUDA | OpenCL | CPU | z CUDA−OpenCL | z CUDA−CPU | z OpenCL−CPU |
+|---|---|---|---|---|---|---|
+| R | 0.699719 | 0.699802 | 0.699550 | −0.24 | 0.48 | 0.72 |
+| T | 0.0321391 | 0.0320757 | 0.0321141 | 1.27 | 0.50 | −0.77 |
+| ⟨x⟩_T, ⟨y⟩_T (mm) | −2.278, −4.077 | −2.273, −4.086 | −2.276, −4.073 | −0.60, 0.93 | −0.26, −0.43 | 0.35, −1.35 |
+| ⟨opl⟩_T (mm) | 149.344 | 149.451 | 149.465 | −1.09 | −1.23 | −0.15 |
+| cov_T xx, yy, xy (mm²) | 28.02, 46.82, −4.759 | 28.06, 46.91, −4.766 | 28.02, 46.80, −4.786 | −0.77, −0.99, 0.15 | −0.09, 0.14, 0.55 | 0.68, 1.14, 0.40 |
+
+T(opl) and T(x, y) χ²: p ≥ 0.04 for all pairs. CUDA isotropic tensor vs vanilla: |z| ≤ 1.9.
+Time for 10⁷ photons: CUDA 1.9 s, OpenCL 5.9 s (of which 3.9 s JIT compilation), CPU 526 s.
+`gpu_vs_cpu.py --compute cuda` (cases A, B, 10⁶ photons) passes as well.
+
+```
+python backends_compare.py --case B --nphoton 1e7
+```
 
 ## To do
 
