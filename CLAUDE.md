@@ -103,6 +103,10 @@ Validation (`test/aniso/`, see its README):
       measured D∥, D⊥ must give reduced coefficients close to μ̃′s∥ 2.6, μ̃′s⊥ 4.4 mm⁻¹ (paper values come
       from an MC fit, so expect agreement within their errors, not exactly). **Gotcha:** with a tensor
       given, MMC ignores the `mus` column for ALL elements: non-WM elements need μs·I from their label.
+   i. **First head demo done 27/11** (`demo_head_gpu.py`, source ~C3, 5e7 photons/case): aniso vs iso WM
+      (same mean D) changes the fluence inside WM by about ±10% (significant), but CW reflectance and
+      GM partial path at the scalp by < 1–2% up to 60 mm. Next (agreed 27/11): **time domain**, same
+      run: TPSF and per-gate mean partial path in GM/WM vs distance and azimuth, late gates.
    Licences: HCP open-access terms (derived data redistributable under the same terms, acknowledge HCP),
    FSL licence (non-commercial). IIT atlas rejected: its licence forbids adapting/building upon the data.
    MIDA (single subject, DTI + 116 structures) is the later "real subject" option.
