@@ -143,6 +143,19 @@ Validation (`test/aniso/`, see its README):
      too); fraction absorbed in the slab; power crossing the slab into the tissue below. Summary curves
      of each metric vs r (one figure per wavelength and tip position). Batches for error bars.
    - Stop there and report: no atlas mesh or Allen data until he decides.
+2c. **Whole-head transmission pilot (agreed 27/11)**, after Radford et al. 2024 (MCX, attenuation
+   1e18-1e20, 7.24e13 packets, >850 h on an RTX 4090: brute force is not an option for us, ~7e5
+   photons/s with MMC on maxwell). In `test/aniso/headmodel/transmission/`, Colin27, same optics as the
+   head demo (isotropic vs anisotropic WM, same mean D). **No roulette** (minenergy 0): absorption only
+   as weight; time cutoff tend = 10 ns. Two source positions: left ear (T7-ish) -> detect right side
+   (path along the CC axons) and forehead (Fpz-ish) -> detect occiput (across them). Detector: large
+   area on the opposite side (report discs of 10, 20, 30 mm radius and the whole opposite hemisphere).
+   Same seeds for iso and aniso (paired: the ratio error is what matters). Pilot 1e8 photons/case:
+   report number of packets reaching each detector, weight distribution (effective sample size),
+   T and its error, the aniso/iso ratio with paired errors, mean time of flight, partial paths per
+   tissue for the transmitted packets (do they cross WM/CC or go around through CSF?), and from that
+   the photon count needed for 1% on the ratio. Fluence maps (viridis) and ratio maps (RdBu_r).
+   GPU: one GPU, so do not run two big GPU jobs at once; small tests (<= 1e6 photons) are fine.
 3. ~~CUDA build test~~ done 27/11 on maxwell (see "What is done" and the maxwell section).
 4. MMClab (`cfg.elemmus` in `src/mmclab.cpp`) only if he asks: Python is the main interface.
 
