@@ -13,12 +13,15 @@ elements, so non-WM elements get mu_s I of their label in elemmus (both runs go 
 Source: pencil beam on the scalp over the left central region (about C3), along the inward normal.
 
 Outputs (OUT = HEADMODEL_DATA/out):
-  demo_head_gpu.npz        nodal CW fluence per batch, exit-photon tallies per batch
+  demo_head_gpu.npz        nodal CW fluence per batch, exit-photon tallies per batch, and the exits at
+                           15-45 mm from the source photon by photon (<case>_raw: distance, azimuth,
+                           L_1..L_4, w0; <case>_rawb: batch), for demo_head_td.py
   demo_head_fluence.png    three planes through a point 20 mm under the source: log10 fluence (iso)
                            and relative difference (aniso - iso) / iso where the fluence > 1e-6 of its
                            maximum; log fluence in viridis with tissue boundaries red, difference in
                            RdBu_r (symmetric limits) with tissue boundaries black and
-                           |difference| = 3 standard errors (from the batch spread) grey dashed
+                           |difference| = 3 standard errors (from the batch spread) solid black (thicker);
+                           source dot black
   demo_head_gm.png         brain (GM) sensitivity: mean partial path in GM of the photons leaving the
                            scalp vs source-exit distance, and vs azimuth on the 25-35 mm ring
   demo_head_gpu.txt        the numbers
@@ -47,6 +50,7 @@ RBINS = np.arange(0.0, 62.5, 5.0)               # source-exit distance bins, mm
 RING = (25.0, 35.0)
 NAZ = 12
 DIFF_FLOOR = 1e-6                               # difference maps: fluence > DIFF_FLOOR x max
+RAW_R = (15.0, 45.0)                            # exits saved photon by photon (time domain)
 DEPTH = 20.0                                    # planes through src + DEPTH * srcdir
 FRAC = os.path.join(OUT, "demo_head_gpu")
 
@@ -121,7 +125,7 @@ def tensors(label, M_wm, aniso):
     return E
 
 
-def simulate(nphoton, batch, gpuid, seed, verbose):
+def simulate(nphoton, batch, gpuid, seed, verbose, resume=False):
     import pmmc
     node, elem, label = load_mesh()
     o = np.load(os.path.join(OUT, "optics_wm.npz"))
@@ -140,10 +144,18 @@ def simulate(nphoton, batch, gpuid, seed, verbose):
     nb = int(np.ceil(nphoton / batch))
     nr, res = len(RBINS) - 1, {}
     for case in ("iso", "aniso"):
+        part = FRAC + "_%s.npz" % case                # each case saved when done; --resume reuses it
+        if resume and os.path.exists(part):
+            z = np.load(part)
+            if int(z["nb"]) == nb and float(z["batch"]) == batch and int(z["seed"]) == seed:
+                print("  %s: reusing %s" % (case, part), flush=True)
+                res[case] = {k: z[k] for k in ("flux", "rad", "az", "raw", "rawb", "seconds")}
+                continue
         E = tensors(label, o["M"], case == "aniso")
         flux = np.zeros((nb, len(node)))
         tal = np.zeros((nb, nr, 6))        # per distance bin: sum w, w L_1..L_4, count
         az = np.zeros((nb, NAZ, 6))
+        raw, rawb = [], []                 # per-photon data of the exits RAW_R[0] <= r < RAW_R[1]
         t0 = time.time()
         for k in range(nb):
             cfg = dict(nphoton=int(batch), seed=seed + 7919 * k, node=node, elem=elem, elemprop=label,
@@ -177,8 +189,14 @@ def simulate(nphoton, batch, gpuid, seed, verbose):
             ia = (phi / (2 * np.pi / NAZ)).astype(int) % NAZ
             for j in range(NAZ):
                 az[k, j] = q[ring & (ia == j)].sum(0)
+            sel = (rd >= RAW_R[0]) & (rd < RAW_R[1])
+            raw.append(np.column_stack([rd[sel], phi[sel], L[sel], np.asarray(d["w0"])[sel]]).astype(np.float32))
+            rawb.append(np.full(sel.sum(), k, np.int16))
             print("  %s: batch %d/%d, %d exits, %.0f s" % (case, k + 1, nb, len(w), time.time() - t0), flush=True)
-        res[case] = dict(flux=flux, rad=tal, az=az, seconds=time.time() - t0)
+            del r, d, p, L, w, rel, rd, ib, q, ring, phi, ia, sel     # keep the peak memory per batch low
+        res[case] = dict(flux=flux, rad=tal, az=az, raw=np.concatenate(raw), rawb=np.concatenate(rawb),
+                         seconds=time.time() - t0)
+        np.savez(part, nb=nb, batch=batch, seed=seed, **res[case])
     np.savez_compressed(FRAC + ".npz", src=src, sdir=sdir, e1=e1, e2=e2, batch=batch, nb=nb,
                         mus_iso=MUS_ISO, prop=np.array(prop),
                         **{"%s_%s" % (c, k): v for c in res for k, v in res[c].items()})
@@ -265,8 +283,8 @@ def plot():
             a.contour(cu, cv, lab, levels=[0.5, 1.5, 2.5, 3.5], colors="black" if diff else "red", linewidths=0.6)
             if diff:
                 sig = np.where(good_d, np.abs(rel) / np.maximum(se, 1e-12), 0)
-                a.contour(cu, cv, sig, levels=[3.0], colors="0.35", linewidths=1.0, linestyles="dashed")
-            a.plot(s1, s2, "o", ms=7, mfc="black" if diff else "red", mec="white")
+                a.contour(cu, cv, sig, levels=[3.0], colors="black", linewidths=1.6)
+            a.plot(s1, s2, "o", ms=7, mfc="black", mec="white")
             a.set_aspect("equal")
             a.set_title(title)
             a.set_xlabel(axn[a1])
@@ -277,7 +295,7 @@ def plot():
                                         100 * np.nanpercentile(np.abs(rel[mi > np.nanmax(mi) * 1e-4]), 95),
                                         100 * np.nanmedian(se[mi > np.nanmax(mi) * 1e-4])))
     fig.suptitle("Colin27, source ~C3 (dot); planes through the point %d mm under the source.\nTissue "
-                 "boundaries: red (top), black (bottom).  Grey dashed: |Δ| = 3 SE.  Grey fill: fluence < %g of max"
+                 "boundaries: red (top), black (bottom).  Thick black: |Δ| = 3 SE.  Grey fill: fluence < %g of max"
                  % (DEPTH, DIFF_FLOOR))
     fig.savefig(FRAC.replace("demo_head_gpu", "demo_head_fluence") + ".png", dpi=130)
     plt.close(fig)
@@ -348,9 +366,10 @@ def main():
     ap.add_argument("--seed", type=int, default=1648335518)
     ap.add_argument("--plot-only", action="store_true")
     ap.add_argument("--verbose", action="store_true")
+    ap.add_argument("--resume", action="store_true", help="reuse a finished case (demo_head_gpu_<case>.npz)")
     a = ap.parse_args()
     if not a.plot_only:
-        simulate(a.nphoton, a.batch, a.gpuid, a.seed, a.verbose)
+        simulate(a.nphoton, a.batch, a.gpuid, a.seed, a.verbose, a.resume)
     plot()
 
 
