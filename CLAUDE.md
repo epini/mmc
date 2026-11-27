@@ -148,6 +148,8 @@ Validation (`test/aniso/`, see its README):
 
 - Plots: colour maps (imshow, pcolormesh, contourf) always in **viridis**; pick contour/line colours that
   stay visible on it (e.g. red, white, black), not cyan.
+  Exception (his request 27/11): **signed difference maps** (e.g. aniso − iso) use a diverging red–blue map,
+  `RdBu_r` (blue negative, white zero, red positive), symmetric limits; contours on it in black/grey.
 - Work on branch `aniso`; commit small, explain in the message; never commit build artifacts
   (`bin/`, `src/built/`, `src/lib/`, `*.o`, `*.a`, `src/mmc_core.clh`, `*.mch`, `*.mc2`, `*.jnii`).
 - Never force-push or rewrite pushed history; fix with a new commit.
